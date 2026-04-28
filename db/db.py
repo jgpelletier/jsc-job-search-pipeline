@@ -1198,6 +1198,133 @@ def log_find_contacts_run(role_id, file_path, tool="claude-code"):
     )
 
 
+# ── REFERENCES LOADING ─────────────────────────────────────────────────────
+# references/*.md hold the candidate's structured facts (must-haves,
+# must-nots, voice anchors). Each file MAY carry a YAML frontmatter block
+# bracketed by '---' lines for programmatic access. The narrative body is
+# always preserved for the LLM to read.
+#
+# load_references() returns a dict like:
+#   {
+#       "mnookin": {"frontmatter": {...}, "body": "..."},
+#       "cmf":     {"frontmatter": {...}, "body": "..."},
+#       "resume":  {"frontmatter": {...}, "body": "..."},
+#   }
+#
+# We use a stdlib-only mini-parser instead of PyYAML so this template
+# works on minimal Python installs.
+
+REFERENCES_DIR = "references"
+_REFERENCES_FILES = ("mnookin", "cmf", "resume")
+
+
+def _strip_quotes(s):
+    s = s.strip()
+    if len(s) >= 2 and s[0] == s[-1] and s[0] in ('"', "'"):
+        return s[1:-1]
+    return s
+
+
+def parse_frontmatter(text):
+    """Parse YAML frontmatter at the top of a markdown string.
+
+    Supports the small subset references/*.md actually use:
+      - 'key: value'                    → str
+      - 'key:' then indented '- item'   → list[str]
+      - 'key:' then indented 'k: v'     → dict[str, str]
+
+    Returns (frontmatter_dict, body_str). If no frontmatter is present,
+    returns ({}, original_text).
+    """
+    if not text.startswith("---\n") and not text.startswith("---\r\n"):
+        return {}, text
+    # Locate the closing fence.
+    nl = "\r\n" if text.startswith("---\r\n") else "\n"
+    fence = f"{nl}---{nl}"
+    end = text.find(fence, len("---") + len(nl))
+    if end == -1:
+        return {}, text
+    fm_text = text[len("---") + len(nl):end]
+    body = text[end + len(fence):]
+
+    data = {}
+    current_key = None
+    current_kind = None  # None | 'list' | 'dict'
+    for raw in fm_text.splitlines():
+        if not raw.strip() or raw.lstrip().startswith("#"):
+            continue
+        if raw[0] in (" ", "\t"):
+            stripped = raw.strip()
+            if current_key is None:
+                continue
+            if stripped.startswith("- "):
+                if current_kind is None:
+                    current_kind = "list"
+                    data[current_key] = []
+                if not isinstance(data[current_key], list):
+                    continue
+                data[current_key].append(_strip_quotes(stripped[2:]))
+            elif ":" in stripped:
+                if current_kind is None:
+                    current_kind = "dict"
+                    data[current_key] = {}
+                if not isinstance(data[current_key], dict):
+                    continue
+                k, _, v = stripped.partition(":")
+                data[current_key][k.strip()] = _strip_quotes(v)
+        else:
+            key_part, _, val_part = raw.partition(":")
+            key = key_part.strip()
+            val = val_part.strip()
+            if val:
+                data[key] = _strip_quotes(val)
+                current_key = None
+                current_kind = None
+            else:
+                current_key = key
+                current_kind = None
+                data[key] = []  # default to empty list; promoted to dict if needed
+    return data, body
+
+
+def load_references(directory=None):
+    """Read references/{mnookin,cmf,resume}.md and return parsed frontmatter + body.
+
+    Returns a dict keyed by file basename (without .md). Each value is
+    `{"frontmatter": dict, "body": str, "path": str}`. Files that don't
+    exist are skipped silently.
+    """
+    directory = directory or REFERENCES_DIR
+    out = {}
+    for name in _REFERENCES_FILES:
+        path = os.path.join(directory, f"{name}.md")
+        if not os.path.isfile(path):
+            continue
+        with open(path) as f:
+            text = f.read()
+        fm, body = parse_frontmatter(text)
+        out[name] = {"frontmatter": fm, "body": body, "path": path}
+    return out
+
+
+def get_must_haves():
+    """Return the list of must-haves from references/mnookin.md frontmatter, or []."""
+    refs = load_references()
+    return refs.get("mnookin", {}).get("frontmatter", {}).get("must_haves", []) or []
+
+
+def get_must_nots():
+    """Return the list of must-nots from references/mnookin.md frontmatter, or []."""
+    refs = load_references()
+    return refs.get("mnookin", {}).get("frontmatter", {}).get("must_nots", []) or []
+
+
+def get_voice_anchors():
+    """Return the list of voice anchors from references/cmf.md frontmatter, or []."""
+    refs = load_references()
+    return refs.get("cmf", {}).get("frontmatter", {}).get("voice_anchors", []) or []
+
+
 # ── CLI ────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":

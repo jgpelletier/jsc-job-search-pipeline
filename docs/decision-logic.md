@@ -26,6 +26,12 @@ Don't draft outreach for a role the candidate shouldn't be pursuing.
 The candidate's specific must-haves and must-nots live in
 `references/mnookin.md`. Read that file before scoring any role.
 
+Read both representations:
+- The narrative body (always loaded — has nuance and examples)
+- The YAML frontmatter at the top — also accessible programmatically via
+  `db.get_must_haves()` and `db.get_must_nots()`. Useful when you need to
+  iterate the structured list rather than re-parsing prose.
+
 Score each must-have as ✅ Present / ⚠️ Unclear / ❌ Missing.
 A role with 3+ missing must-haves is a no-go regardless of title or comp.
 Any confirmed must-not warrants a direct conversation with the candidate

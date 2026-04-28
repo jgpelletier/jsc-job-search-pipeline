@@ -8,7 +8,35 @@ covered by SemVer is the `db.*` function names, the skill names, the
 
 ## [Unreleased]
 
-(No changes since v0.2.1.)
+(No changes since v0.2.2.)
+
+## [0.2.2] — 2026-04-28
+
+### Added
+- **YAML frontmatter on `references/mnookin.md` and `references/cmf.md`.**
+  Structured fields (`must_haves`, `must_nots`, `soft_preferences`,
+  `voice_anchors`, `target_scenarios`, `hard_constraints`) are now machine-
+  readable. The narrative body is unchanged — the LLM still reads it at
+  session start.
+- New `db.*` functions for structured access:
+  - `db.load_references(directory=None)` — returns `{file: {frontmatter, body, path}}`
+  - `db.get_must_haves()`, `db.get_must_nots()`, `db.get_voice_anchors()`
+  - `db.parse_frontmatter(text)` — exposed for tests and tooling
+- Stdlib-only YAML mini-parser (no third-party dep). Handles
+  `key: value`, `key:` + indented `- item`, and `key:` + indented
+  `subkey: value`. Stick to those patterns when writing frontmatter.
+- `tests/test_references.py` — 11 cases covering parser edge cases, load
+  semantics, and the shipped template files.
+- `references/README.md` documents the dual-representation convention and
+  the parser's supported subset.
+
+### Changed
+- `CLAUDE.md` Database Operations cheat-sheet adds the new functions.
+- `docs/decision-logic.md` mentions the structured access path.
+
+### Compatibility
+- No DB changes. Council members who haven't adopted frontmatter still
+  work — `db.get_must_haves()` etc. return `[]` when the field is missing.
 
 ## [0.2.1] — 2026-04-28
 
@@ -179,7 +207,8 @@ detail. The high-level summary:
   `inbox/processed/`.
 - Daily ops: `python3 db/db.py pipeline | action | stats`.
 
-[Unreleased]: https://github.com/jgpelletier/jsc-job-search-pipeline/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/jgpelletier/jsc-job-search-pipeline/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/jgpelletier/jsc-job-search-pipeline/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/jgpelletier/jsc-job-search-pipeline/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/jgpelletier/jsc-job-search-pipeline/compare/v0.1.0...v0.2.0
 [0.2.0-rc3]: https://github.com/jgpelletier/jsc-job-search-pipeline/compare/v0.2.0-rc2...v0.2.0-rc3
