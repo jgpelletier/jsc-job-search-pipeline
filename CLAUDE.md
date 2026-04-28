@@ -112,6 +112,12 @@ db.log_culture_revision(role_id, culture_fit, file_path, ...)
 db.log_company_research(role_id, file_path, ...)
 db.log_find_contacts_run(role_id, file_path)
 
+# References (parses YAML frontmatter from references/*.md)
+db.load_references()              # all three files: mnookin, cmf, resume
+db.get_must_haves()               # list[str] from mnookin.md frontmatter
+db.get_must_nots()                # list[str]
+db.get_voice_anchors()            # list[str] from cmf.md frontmatter
+
 # Session notes (drives HANDOFF.md render)
 db.add_session_note("decision",   "...", role_id=None)  # open question for candidate
 db.add_session_note("completion", "...")                # end-of-session summary
