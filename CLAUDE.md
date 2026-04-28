@@ -19,23 +19,40 @@ context — not generic PM advice.
 
 ## Session Start Protocol
 
+`pipeline.md` and `HANDOFF.md` are auto-rendered from `pipeline.db` at session
+start by the SessionStart hook in `.claude/settings.json`. Both files carry a
+do-not-hand-edit header. To regenerate manually: `python3 db/db.py render`.
+
 At the start of every session, before any task:
-1. Read `HANDOFF.md` if it exists — current pipeline state, open decisions, what's next
+1. Read `HANDOFF.md` — current pipeline state, open decisions, recent session summaries, analyses index
 2. Skim `references/` so you have the candidate's metrics, voice, and constraints loaded
 3. Run `python3 db/db.py pipeline` if asked for pipeline state
 
-If `HANDOFF.md` does not exist (first session), the first thing to do is create one after the candidate describes what they want to work on.
+If `pipeline.db` does not exist (first session), run `python3 db/init_db.py`
+to apply migrations and create it; the first render will produce empty-but-valid
+`pipeline.md` and `HANDOFF.md`.
 
 ## Session End Protocol
 
 At the end of every working session (when the candidate signals done, or after any
-significant stage completes), overwrite `HANDOFF.md` with:
-- Date and tool used
-- Current status of every active role
-- Exact next action per role (stage in workflow)
-- Open decisions waiting on the candidate
-- Summary of what was completed this session
-- Updated references/analyses index if new files were added
+significant stage completes):
+
+1. Capture any open decisions the candidate must resolve next session:
+   ```python
+   db.add_session_note("decision", "<what to ask>", role_id=<id or None>)
+   ```
+2. Capture a short summary of what was completed:
+   ```python
+   db.add_session_note("completion", "<2–4 sentence summary>")
+   ```
+3. Regenerate the render outputs:
+   ```python
+   db.render_all()                # or: python3 db/db.py render
+   ```
+
+`HANDOFF.md` is no longer hand-edited. The render reads `session_notes` and the
+rest of the DB to produce the file. Decisions stay open until you resolve them
+with `db.resolve_session_note(note_id, resolution="...")`.
 
 ## Core Behavior Rules
 
@@ -321,6 +338,26 @@ db.log_response(role_id, contact, summary)  # record inbound response
 db.log_application(role_id, ...)            # record a submission
 db.disqualify(role_id, reason)              # remove from pipeline
 db.log_search_run(...)                      # record a search run
+
+# Session notes (drives HANDOFF.md render)
+db.add_session_note("decision",   "...", role_id=None)  # open question for candidate
+db.add_session_note("completion", "...")                # end-of-session summary
+db.add_session_note("note",       "...")                # free-form
+db.resolve_session_note(note_id, resolution="...")      # close a decision
+db.list_open_decisions(role_id=None)                    # read open decisions
+
+# Render outputs (pipeline.md and HANDOFF.md are render outputs of the DB)
+db.render_all()                  # regenerate both files
+db.render_pipeline_md()          # pipeline.md only
+db.render_handoff_md()           # HANDOFF.md only
+```
+
+CLI shortcuts:
+
+```bash
+python3 db/db.py render          # regenerate both files
+python3 db/db.py migrate         # apply pending migrations
+python3 db/db.py note decision "Comp band on Acme not confirmed"
 ```
 
 Valid statuses (in order):
@@ -377,27 +414,27 @@ These require explicit confirmation before executing, same as the Approval Gates
 ## Subagent Rules
 
 Background research agents (launched via the Task tool) must NOT:
-- Write to `HANDOFF.md` — this file is maintained exclusively by the main agent at session end
+- Write to `HANDOFF.md` or `pipeline.md` — both are render outputs of `pipeline.db`. Edits will be overwritten on the next render and may be silently lost.
 - Commit to `pipeline.db` beyond what is explicitly authorized for the specific task
 - Create or modify any file unless explicitly tasked with writing that file
 
 Background agents should return findings as text output only.
 The main agent is responsible for all file writes and DB commits based on those findings.
 
-`HANDOFF.md` is a session-state file owned by the main agent. Subagents touching it
-will cause stale or conflicting state. If a subagent has relevant summary information,
-it returns it as output — the main agent decides whether and how to persist it.
+If a subagent has relevant summary information, it returns it as output —
+the main agent decides whether to persist it via `db.add_session_note(...)`.
 
 ---
 
 ## Pipeline Files
 
 - `CLAUDE.md` — this file (all decision logic, agent behavior, and guardrails)
-- `HANDOFF.md` — session-state file, recreated each session
-- `pipeline.md` — pipeline status overview maintained by the candidate
+- `HANDOFF.md` — render output of `pipeline.db`. Do not hand-edit. Regenerate via `db.render_all()` or `python3 db/db.py render`
+- `pipeline.md` — render output of `pipeline.db`. Do not hand-edit. Same regenerate command
 - `pipeline.db` — SQLite database (single source of truth)
-- `db/init_db.py` — run once to create database
-- `db/db.py` — all read/write operations
+- `migrations/` — versioned schema migrations (`NNN-name.sql`); applied automatically on first DB connection
+- `db/init_db.py` — bootstrap (apply pending migrations); idempotent
+- `db/db.py` — all read/write operations + render functions
 - `inbox/` — drop screenshots here for batch processing
 - `inbox/processed/` — processed screenshots archive
 - `references/` — candidate-specific facts (resume, CMF, must-haves, verified stories)
