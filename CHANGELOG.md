@@ -8,7 +8,36 @@ covered by SemVer is the `db.*` function names, the skill names, the
 
 ## [Unreleased]
 
-(Nothing pending for v0.2.0. The next tag will be v0.2.0.)
+(No changes since v0.2.0.)
+
+## [0.2.0] — 2026-04-28
+
+Cumulative release of the rc1 + rc2 + rc3 changes. Council members
+upgrading from v0.1.0 should read the per-rc entries below for the full
+detail. The high-level summary:
+
+- Schema is versioned. `python3 db/init_db.py` is now an idempotent
+  migration runner over `migrations/NNN-*.sql`. Existing v0.1.0 DBs upgrade
+  in place; the v0.1.0 schema bug (missing `roles.source_file` and
+  `roles.previous_fit`) is repaired automatically.
+- `pipeline.md` and `HANDOFF.md` are render outputs of `pipeline.db`. Both
+  files carry a do-not-hand-edit header and regenerate on session start
+  (via `.claude/settings.json` SessionStart hook) and on demand
+  (`python3 db/db.py render`). Open decisions and end-of-session summaries
+  live in the new `session_notes` table.
+- Skills no longer embed SQL or column names. New helpers in `db.py`
+  (`get_role_state_for_skill`, `log_jd_analysis`, `log_culture_revision`,
+  `log_company_research`, `log_find_contacts_run`) own all schema-touching
+  logic. A drift guard (`tests/test_skills_no_raw_sql.py`) keeps it that way.
+- Stdlib-`unittest` coverage in `tests/`: 26 cases across migrations, render,
+  and skill helpers.
+
+### Compatibility
+- `python3 db/init_db.py`, all v0.1.0 `db.*` function names, all skill
+  names, `references/` layout, and `pipeline.db` location are unchanged.
+- This is the breaking-change minor version called out in the v0.2 plan.
+  Subsequent v0.2.x releases (CLAUDE.md split, references frontmatter,
+  judgment tests) are additive and non-breaking.
 
 ## [0.2.0-rc3] — 2026-04-28
 
@@ -126,7 +155,8 @@ covered by SemVer is the `db.*` function names, the skill names, the
   `inbox/processed/`.
 - Daily ops: `python3 db/db.py pipeline | action | stats`.
 
-[Unreleased]: https://github.com/jgpelletier/jsc-job-search-pipeline/compare/v0.2.0-rc3...HEAD
+[Unreleased]: https://github.com/jgpelletier/jsc-job-search-pipeline/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/jgpelletier/jsc-job-search-pipeline/compare/v0.1.0...v0.2.0
 [0.2.0-rc3]: https://github.com/jgpelletier/jsc-job-search-pipeline/compare/v0.2.0-rc2...v0.2.0-rc3
 [0.2.0-rc2]: https://github.com/jgpelletier/jsc-job-search-pipeline/compare/v0.2.0-rc1...v0.2.0-rc2
 [0.2.0-rc1]: https://github.com/jgpelletier/jsc-job-search-pipeline/compare/v0.1.0...v0.2.0-rc1
