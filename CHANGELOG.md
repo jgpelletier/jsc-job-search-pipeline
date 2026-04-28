@@ -9,8 +9,40 @@ covered by SemVer is the `db.*` function names, the skill names, the
 ## [Unreleased]
 
 ### Pending for v0.2.0
-- DB-authoritative `pipeline.md` and `HANDOFF.md` (rc2).
 - Skills decoupled from raw SQL (rc3).
+
+## [0.2.0-rc2] — 2026-04-28
+
+### Added
+- **DB-authoritative `pipeline.md` and `HANDOFF.md`.** Both files are now
+  render outputs of `pipeline.db` and carry a do-not-hand-edit header.
+  Regenerate with `db.render_all()` or `python3 db/db.py render`.
+- **SessionStart hook** in `.claude/settings.json` runs the render on session
+  start so the markdown views are always current.
+- New table `session_notes` (migration 003) for state HANDOFF.md needs but
+  isn't naturally derivable: open decisions, completion summaries, free-form notes.
+- New `db.*` functions:
+  - `add_session_note(kind, body, role_id=None)` — kinds: decision, completion, note
+  - `resolve_session_note(note_id, resolution=None)`
+  - `list_open_decisions(role_id=None)`, `list_recent_completions(limit=3)`
+  - `render_pipeline_md(path=None)`, `render_handoff_md(path=None)`, `render_all()`
+- New CLI subcommands: `python3 db/db.py render | migrate | note <kind> <body>`.
+- `tests/test_render.py` — 6 unittest cases covering empty/seeded/resolved/
+  determinism/grouping behaviour.
+
+### Changed
+- `CLAUDE.md` Session Start and Session End protocols updated to use the
+  render flow. End-of-session: capture notes via `db.add_session_note(...)`,
+  then `db.render_all()`. No more hand-editing HANDOFF.md.
+- Subagent rules now name both `pipeline.md` and `HANDOFF.md` as files
+  subagents must not write.
+- Pipeline Files section in `CLAUDE.md` documents both as render outputs.
+
+### Compatibility
+- v0.1.0 users: existing roles, contacts, applications, etc. all continue to
+  work. The first session after upgrade applies migrations 002 and 003,
+  regenerates `pipeline.md` (overwriting any hand edits), and creates
+  `HANDOFF.md` from DB state.
 
 ## [0.2.0-rc1] — 2026-04-28
 
@@ -58,6 +90,7 @@ covered by SemVer is the `db.*` function names, the skill names, the
   `inbox/processed/`.
 - Daily ops: `python3 db/db.py pipeline | action | stats`.
 
-[Unreleased]: https://github.com/jgpelletier/jsc-job-search-pipeline/compare/v0.2.0-rc1...HEAD
+[Unreleased]: https://github.com/jgpelletier/jsc-job-search-pipeline/compare/v0.2.0-rc2...HEAD
+[0.2.0-rc2]: https://github.com/jgpelletier/jsc-job-search-pipeline/compare/v0.2.0-rc1...v0.2.0-rc2
 [0.2.0-rc1]: https://github.com/jgpelletier/jsc-job-search-pipeline/compare/v0.1.0...v0.2.0-rc1
 [0.1.0]: https://github.com/jgpelletier/jsc-job-search-pipeline/releases/tag/v0.1.0

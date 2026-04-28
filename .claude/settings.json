@@ -12,5 +12,17 @@
       "WebFetch(domain:jobs.ashbyhq.com)",
       "WebFetch(domain:theorg.com)"
     ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 db/db.py render"
+          }
+        ]
+      }
+    ]
   }
 }
