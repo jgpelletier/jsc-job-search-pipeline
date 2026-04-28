@@ -8,7 +8,38 @@ covered by SemVer is the `db.*` function names, the skill names, the
 
 ## [Unreleased]
 
-(No changes since v0.2.2.)
+(No changes since v0.2.3.)
+
+## [0.2.3] — 2026-04-28
+
+### Added
+- `tests/test_judgment.py` — 13 deterministic gate tests on the judgment
+  surface:
+  - `update_status` rejects invalid statuses; accepts every valid one
+  - `update_status` writes a `status_change` activity entry
+  - `disqualify` is a soft remove (no DELETE), reason persisted, row
+    excluded from `pipeline_summary`
+  - `log_application` auto-advances to Applied with a 7-day follow-up
+  - `log_outreach` auto-advances Researching → Outreach Drafted, but only
+    from Researching
+  - `log_response` writes activity without changing status
+  - `log_jd_analysis` writes a `score_revision` activity row when the
+    score changes; not when it doesn't
+
+  These cover the deterministic edges. LLM-graded scoring (whether a JD
+  contains a must-not in prose, whether a draft sounds generic) is
+  intentionally not tested — it isn't deterministic by definition.
+
+### Fixed
+- **`log_outreach` deadlock.** v0.1.0's `log_outreach` called
+  `update_status` from inside an open `con()` context, which deadlocked
+  against its own write lock for SQLite's 5-second timeout before
+  succeeding. Restructured to mirror `log_application`: collect the
+  intended advance, exit the with-block, then call `update_status`.
+
+### Compatibility
+- No DB or public API changes. Existing callers behave the same — they
+  just no longer wait 5 seconds.
 
 ## [0.2.2] — 2026-04-28
 
@@ -207,7 +238,8 @@ detail. The high-level summary:
   `inbox/processed/`.
 - Daily ops: `python3 db/db.py pipeline | action | stats`.
 
-[Unreleased]: https://github.com/jgpelletier/jsc-job-search-pipeline/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/jgpelletier/jsc-job-search-pipeline/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/jgpelletier/jsc-job-search-pipeline/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/jgpelletier/jsc-job-search-pipeline/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/jgpelletier/jsc-job-search-pipeline/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/jgpelletier/jsc-job-search-pipeline/compare/v0.1.0...v0.2.0
