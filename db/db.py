@@ -306,6 +306,7 @@ def update_status(role_id, new_status, note=None, next_action=None, next_action_
 def log_outreach(role_id, contact_name, contact_title=None, channel="LinkedIn",
                  message_summary=None):
     """Record that outreach was sent."""
+    auto_advance = False
     with con() as db:
         r = db.execute("SELECT company_id, status FROM roles WHERE id=?", (role_id,)).fetchone()
         if not r:
@@ -329,10 +330,12 @@ def log_outreach(role_id, contact_name, contact_title=None, channel="LinkedIn",
         _log(db, company_id=r["company_id"], role_id=role_id, contact_id=contact_id,
              type="outreach_sent",
              detail=f"{channel} → {contact_name}: {message_summary or '(no summary)'}")
+        auto_advance = (r["status"] == "Researching")
 
-        if r["status"] == "Researching":
-            update_status(role_id, "Outreach Drafted",
-                          note="Auto-advanced after outreach logged")
+    # update_status opens its own connection, so must run after the block above commits.
+    if auto_advance:
+        update_status(role_id, "Outreach Drafted",
+                      note="Auto-advanced after outreach logged")
     print(f"✓ Outreach logged: {contact_name} via {channel}")
 
 
