@@ -64,30 +64,21 @@ After generating the fit score, automatically save it:
 1. **Write markdown file** to `references/analyses/{role-id:03d}-{company-slug}-fit-score-{date}.md`
    - Slug convention: lowercase, hyphens, no special characters (e.g. `frontrowmd` not `frontrow-md`)
 
-2. **Update culture_fit in DB** — save previous value if score changes:
-   ```python
-   import sqlite3
-   conn = sqlite3.connect('pipeline.db')
-   old = conn.execute('SELECT overall_fit, culture_fit FROM roles WHERE id=?', (role_id,)).fetchone()
-   new_overall = round(0.6 * tech_fit + 0.4 * new_culture_fit, 1)
-   if old[0] != new_overall:
-       conn.execute('UPDATE roles SET previous_fit=?, culture_fit=?, overall_fit=?, updated_at=datetime("now") WHERE id=?',
-                    (old[0], new_culture_fit, new_overall, role_id))
-       conn.commit()
-       print(f"Score updated: {old[0]} → {new_overall} (previous_fit saved)")
-   ```
+2. **Persist to the DB via `db.log_culture_revision`** — reuses the existing
+   `tech_fit`, recomputes `overall_fit` via the canonical formula, saves
+   `previous_fit`, and writes the analysis snapshot:
 
-3. **Log to database**:
    ```python
    import db.db as db
-   db.log_analysis(
-       role_id      = role_id,
-       skill_type   = 'score-fit',
-       file_path    = 'references/analyses/001-pano-ai-fit-score-2026-02-23.md',
-       overall_fit  = new_overall,
-       verdict      = 'pursue',  # or 'pass' or 'research'
-       tool         = 'claude-code'
+   old, new, snapshot_id = db.log_culture_revision(
+       role_id     = role_id,
+       culture_fit = new_culture_fit,   # 1–10, from must-have/must-not assessment
+       file_path   = f"references/analyses/{role_id:03d}-{slug}-fit-score-{date}.md",
+       verdict     = "pursue",          # or "pass" or "research"
+       fit_notes   = "[1-2 sentence summary of the verdict]",
    )
+   if old != new:
+       print(f"Score updated: {old} → {new} (previous_fit saved)")
    ```
 
-4. **Do not advance status.** Present verdict and wait for the candidate's go-ahead before moving to Qualified or later stages.
+3. **Do not advance status.** Present verdict and wait for the candidate's go-ahead before moving to Qualified or later stages.

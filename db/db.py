@@ -1025,6 +1025,179 @@ def render_all():
     print(f"✓ Rendered: {p1}, {p2}")
 
 
+# ── SKILL HELPERS ──────────────────────────────────────────────────────────
+# Skills should not embed SQL or column names. Each skill that writes to the
+# DB calls one of these named functions. Schema knowledge stays in db.py.
+
+# Canonical fit formula. Skills should not recompute it inline.
+_FIT_TECH_WEIGHT = 0.6
+_FIT_CULTURE_WEIGHT = 0.4
+
+
+def _compute_overall_fit(tech_fit, culture_fit):
+    """Return rounded overall fit. Either input may be None — returns None then."""
+    if tech_fit is None or culture_fit is None:
+        return None
+    return round(_FIT_TECH_WEIGHT * tech_fit + _FIT_CULTURE_WEIGHT * culture_fit, 1)
+
+
+def get_role_state_for_skill(role_id):
+    """Return pre-flight state a skill needs to gate-check before running.
+
+    Returns a dict with keys:
+        company        — company name
+        title          — role title
+        status         — current pipeline status
+        overall_fit    — current fit score (may be None)
+        tech_fit       — current tech component
+        culture_fit    — current culture component
+        next_action    — current next-action text
+        disqualified   — bool
+        flagged        — bool: True if next_action mentions "recommend close" or "caution"
+        open_decisions — list of open session_notes (kind='decision') for this role
+
+    Returns None if the role does not exist.
+    """
+    with con() as db:
+        r = db.execute(
+            "SELECT r.id, r.title, r.status, r.overall_fit, r.tech_fit, "
+            "       r.culture_fit, r.next_action, r.disqualified, c.name AS company "
+            "FROM roles r JOIN companies c ON c.id=r.company_id "
+            "WHERE r.id=?",
+            (role_id,)
+        ).fetchone()
+        if not r:
+            return None
+        decisions = db.execute(
+            "SELECT id, body, created_at FROM session_notes "
+            "WHERE kind='decision' AND resolved_at IS NULL AND role_id=? "
+            "ORDER BY created_at DESC",
+            (role_id,)
+        ).fetchall()
+
+    next_action = (r["next_action"] or "").lower()
+    flagged = ("recommend close" in next_action) or ("caution" in next_action)
+    return {
+        "company":        r["company"],
+        "title":          r["title"],
+        "status":         r["status"],
+        "overall_fit":    r["overall_fit"],
+        "tech_fit":       r["tech_fit"],
+        "culture_fit":    r["culture_fit"],
+        "next_action":    r["next_action"],
+        "disqualified":   bool(r["disqualified"]),
+        "flagged":        flagged,
+        "open_decisions": [dict(d) for d in decisions],
+    }
+
+
+def log_jd_analysis(role_id, tech_fit, culture_fit, file_path,
+                    verdict=None, fit_notes=None, tool="claude-code"):
+    """Persist analyze-jd output: update fit components, save previous_fit, log analysis.
+
+    Returns (old_overall, new_overall, snapshot_id). Skills should print the
+    delta when old != new — never silently overwrite.
+
+    The overall fit is computed via the canonical formula
+    (0.6 * tech_fit + 0.4 * culture_fit). Callers cannot override it.
+    """
+    new_overall = _compute_overall_fit(tech_fit, culture_fit)
+    with con() as db:
+        existing = db.execute(
+            "SELECT overall_fit FROM roles WHERE id=?", (role_id,)
+        ).fetchone()
+        if not existing:
+            print(f"Role {role_id} not found.")
+            return None
+        old_overall = existing["overall_fit"]
+        if old_overall != new_overall:
+            db.execute(
+                "UPDATE roles SET previous_fit=?, tech_fit=?, culture_fit=?, "
+                "overall_fit=?, fit_notes=COALESCE(?, fit_notes) WHERE id=?",
+                (old_overall, tech_fit, culture_fit, new_overall, fit_notes, role_id)
+            )
+            _log(db, company_id=db.execute(
+                "SELECT company_id FROM roles WHERE id=?", (role_id,)
+            ).fetchone()[0], role_id=role_id,
+                type="score_revision",
+                detail=f"was {old_overall}, now {new_overall} — analyze-jd")
+        else:
+            # Score unchanged but components or notes may have shifted.
+            db.execute(
+                "UPDATE roles SET tech_fit=?, culture_fit=?, "
+                "fit_notes=COALESCE(?, fit_notes) WHERE id=?",
+                (tech_fit, culture_fit, fit_notes, role_id)
+            )
+
+    snapshot_id = log_analysis(
+        role_id=role_id, skill_type="analyze-jd", file_path=file_path,
+        overall_fit=new_overall, verdict=verdict, tool=tool
+    )
+    return (old_overall, new_overall, snapshot_id)
+
+
+def log_culture_revision(role_id, culture_fit, file_path,
+                         verdict=None, fit_notes=None, tool="claude-code"):
+    """Persist score-fit output: revise culture_fit, recompute overall_fit, log analysis.
+
+    Reuses the existing tech_fit. Returns (old_overall, new_overall, snapshot_id).
+    """
+    with con() as db:
+        existing = db.execute(
+            "SELECT overall_fit, tech_fit FROM roles WHERE id=?", (role_id,)
+        ).fetchone()
+        if not existing:
+            print(f"Role {role_id} not found.")
+            return None
+        old_overall = existing["overall_fit"]
+        tech_fit = existing["tech_fit"]
+        new_overall = _compute_overall_fit(tech_fit, culture_fit)
+
+        if old_overall != new_overall:
+            db.execute(
+                "UPDATE roles SET previous_fit=?, culture_fit=?, overall_fit=?, "
+                "fit_notes=COALESCE(?, fit_notes) WHERE id=?",
+                (old_overall, culture_fit, new_overall, fit_notes, role_id)
+            )
+            _log(db, company_id=db.execute(
+                "SELECT company_id FROM roles WHERE id=?", (role_id,)
+            ).fetchone()[0], role_id=role_id,
+                type="score_revision",
+                detail=f"was {old_overall}, now {new_overall} — score-fit")
+        else:
+            db.execute(
+                "UPDATE roles SET culture_fit=?, "
+                "fit_notes=COALESCE(?, fit_notes) WHERE id=?",
+                (culture_fit, fit_notes, role_id)
+            )
+
+    snapshot_id = log_analysis(
+        role_id=role_id, skill_type="score-fit", file_path=file_path,
+        overall_fit=new_overall, verdict=verdict, tool=tool
+    )
+    return (old_overall, new_overall, snapshot_id)
+
+
+def log_company_research(role_id, file_path, verdict="research", tool="claude-code"):
+    """Persist company-research output. Thin wrapper over log_analysis.
+
+    Skills call this so the skill files do not name the analysis_snapshots
+    table or the skill_type string directly.
+    """
+    return log_analysis(
+        role_id=role_id, skill_type="company-research", file_path=file_path,
+        overall_fit=None, verdict=verdict, tool=tool
+    )
+
+
+def log_find_contacts_run(role_id, file_path, tool="claude-code"):
+    """Persist find-contacts output. Thin wrapper over log_analysis."""
+    return log_analysis(
+        role_id=role_id, skill_type="find-contacts", file_path=file_path,
+        overall_fit=None, verdict=None, tool=tool
+    )
+
+
 # ── CLI ────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":

@@ -156,26 +156,22 @@ company-research."]
 
 After generating the contacts list, automatically save it:
 
-1. **Write markdown file** to `references/analyses/{role-id}-{company-slug}-contacts-{date}.md`
-2. **Log to database**:
+1. **Write markdown file** to `references/analyses/{role-id:03d}-{company-slug}-contacts-{date}.md`
+2. **Log to database** via `db.log_find_contacts_run`:
    ```python
    import db.db as db
-   db.log_analysis(
-       role_id      = [role_id],
-       skill_type   = 'find-contacts',
-       file_path    = 'references/analyses/001-pano-ai-contacts-2026-02-23.md',
-       overall_fit  = None,
-       verdict      = None,
-       tool         = 'claude-code'
+   db.log_find_contacts_run(
+       role_id   = role_id,
+       file_path = f"references/analyses/{role_id:03d}-{slug}-contacts-{date}.md",
    )
    ```
 3. **Update contacts with discovery info** when the candidate finds LinkedIn URLs:
    ```python
    # Mark as priority target
    db.update_contact_discovered(contact_id, "https://linkedin.com/in/...", is_target=True)
-   
+
    # Later, when outreach is sent
    db.update_contact_outreach(contact_id, response_received=False)
    ```
 
-No user confirmation required. File naming: `{role-id:03d}-{slug}-contacts-{date}.md`
+No user confirmation required.

@@ -68,18 +68,15 @@ What shared context or product detail makes the connection authentic?]
 
 After generating the company research, automatically save it:
 
-1. **Write markdown file** to `references/analyses/{role-id}-{company-slug}-company-{date}.md`
-2. **Log to database**: 
+1. **Write markdown file** to `references/analyses/{role-id:03d}-{company-slug}-company-{date}.md`
+2. **Log to database** via `db.log_company_research`:
    ```python
    import db.db as db
-   db.log_analysis(
-       role_id      = [role_id],
-       skill_type   = 'company-research',
-       file_path    = 'references/analyses/001-pano-ai-company-2026-02-23.md',
-       overall_fit  = None,  # company research doesn't have fit score
-       verdict      = 'research',  # or 'pursue' if clear go
-       tool         = 'claude-code'
+   db.log_company_research(
+       role_id   = role_id,
+       file_path = f"references/analyses/{role_id:03d}-{slug}-company-{date}.md",
+       verdict   = "research",   # or "pursue" if clear go
    )
    ```
 
-No user confirmation required. File naming: `{role-id:03d}-{slug}-company-{date}.md`
+No user confirmation required.
