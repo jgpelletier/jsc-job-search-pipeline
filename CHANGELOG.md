@@ -8,7 +8,31 @@ covered by SemVer is the `db.*` function names, the skill names, the
 
 ## [Unreleased]
 
-(No changes since v0.2.0.)
+(No changes since v0.2.1.)
+
+## [0.2.1] — 2026-04-28
+
+### Changed
+- **CLAUDE.md split into focused passive-context files.** The judgment logic
+  that previously lived in a single 451-line CLAUDE.md is now spread across
+  three files in `docs/`:
+  - `docs/decision-logic.md` — fit scoring, must-haves, language signals, transferable skills
+  - `docs/workflow.md` — workflow paths, gates, application logging, data integrity, subagent rules, inbox folder
+  - `docs/voice-and-drafting.md` — voice rules, outreach hooks, bullets, cover letter, stories
+- CLAUDE.md is now 168 lines: role, candidate context, session protocols,
+  database cheat-sheet, and a pointer block telling the agent to read all
+  three docs/* files at session start. Passive-context principle preserved.
+
+### Added
+- `tests/test_docs_loaded.py` — drift guard. Asserts each required docs/*
+  file exists, is referenced from CLAUDE.md, and is named in the Session
+  Start Protocol.
+
+### Compatibility
+- No DB changes. No public API changes. Existing skills and `db.*`
+  functions are unchanged. Council members who customized their CLAUDE.md
+  should diff against v0.2.0 and re-apply local edits to the new file
+  structure.
 
 ## [0.2.0] — 2026-04-28
 
@@ -155,7 +179,8 @@ detail. The high-level summary:
   `inbox/processed/`.
 - Daily ops: `python3 db/db.py pipeline | action | stats`.
 
-[Unreleased]: https://github.com/jgpelletier/jsc-job-search-pipeline/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/jgpelletier/jsc-job-search-pipeline/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/jgpelletier/jsc-job-search-pipeline/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/jgpelletier/jsc-job-search-pipeline/compare/v0.1.0...v0.2.0
 [0.2.0-rc3]: https://github.com/jgpelletier/jsc-job-search-pipeline/compare/v0.2.0-rc2...v0.2.0-rc3
 [0.2.0-rc2]: https://github.com/jgpelletier/jsc-job-search-pipeline/compare/v0.2.0-rc1...v0.2.0-rc2
