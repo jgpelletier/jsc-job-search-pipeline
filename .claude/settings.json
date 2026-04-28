@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(python3:*)",
+      "Bash(ls:*)",
+      "Bash(tail:*)",
+      "WebFetch(domain:www.linkedin.com)",
+      "WebFetch(domain:boards.greenhouse.io)",
+      "WebFetch(domain:job-boards.greenhouse.io)",
+      "WebFetch(domain:jobs.lever.co)",
+      "WebFetch(domain:jobs.ashbyhq.com)",
+      "WebFetch(domain:theorg.com)"
+    ]
+  }
+}
