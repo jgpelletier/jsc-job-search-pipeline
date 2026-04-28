@@ -8,8 +8,44 @@ covered by SemVer is the `db.*` function names, the skill names, the
 
 ## [Unreleased]
 
-### Pending for v0.2.0
-- Skills decoupled from raw SQL (rc3).
+(Nothing pending for v0.2.0. The next tag will be v0.2.0.)
+
+## [0.2.0-rc3] — 2026-04-28
+
+### Added
+- **Skill-helper functions in `db/db.py`** — schema knowledge stays in `db.py`;
+  skills call named functions:
+  - `get_role_state_for_skill(role_id)` — returns the dict skills need for
+    pre-flight gate checks (company, status, fit, flagged, open_decisions).
+  - `log_jd_analysis(role_id, tech_fit, culture_fit, file_path, ...)` —
+    enforces the canonical 0.6·tech + 0.4·culture formula, saves
+    `previous_fit` on revision, writes the analysis snapshot. Returns
+    `(old_overall, new_overall, snapshot_id)`.
+  - `log_culture_revision(role_id, culture_fit, file_path, ...)` — score-fit
+    counterpart: reuses existing `tech_fit`, recomputes overall.
+  - `log_company_research(role_id, file_path, verdict)` — thin wrapper.
+  - `log_find_contacts_run(role_id, file_path)` — thin wrapper.
+- `tests/test_skill_logging.py` — 12 cases covering pre-flight state,
+  formula, previous_fit semantics, snapshot logging, thin wrappers.
+- `tests/test_skills_no_raw_sql.py` — drift guard: greps SKILL.md files for
+  `sqlite3.connect`, `INSERT INTO`, `UPDATE roles`, etc. Fails if any
+  SKILL.md leaks past `db.*`.
+
+### Changed
+- `skills/analyze-jd/SKILL.md` — pre-flight check uses
+  `db.get_role_state_for_skill`; persistence uses `db.log_jd_analysis`. No
+  raw SQL.
+- `skills/score-fit/SKILL.md` — persistence uses `db.log_culture_revision`.
+  No raw SQL.
+- `skills/company-research/SKILL.md` — uses `db.log_company_research`
+  instead of `db.log_analysis(...)` for symmetry.
+- `skills/find-contacts/SKILL.md` — uses `db.log_find_contacts_run` for
+  symmetry.
+
+### Compatibility
+- The original `db.log_analysis(...)` is unchanged and still works; the new
+  helpers are wrappers. Council members who have not edited their copy of
+  the skill files inherit the new helpers automatically.
 
 ## [0.2.0-rc2] — 2026-04-28
 
@@ -90,7 +126,8 @@ covered by SemVer is the `db.*` function names, the skill names, the
   `inbox/processed/`.
 - Daily ops: `python3 db/db.py pipeline | action | stats`.
 
-[Unreleased]: https://github.com/jgpelletier/jsc-job-search-pipeline/compare/v0.2.0-rc2...HEAD
+[Unreleased]: https://github.com/jgpelletier/jsc-job-search-pipeline/compare/v0.2.0-rc3...HEAD
+[0.2.0-rc3]: https://github.com/jgpelletier/jsc-job-search-pipeline/compare/v0.2.0-rc2...v0.2.0-rc3
 [0.2.0-rc2]: https://github.com/jgpelletier/jsc-job-search-pipeline/compare/v0.2.0-rc1...v0.2.0-rc2
 [0.2.0-rc1]: https://github.com/jgpelletier/jsc-job-search-pipeline/compare/v0.1.0...v0.2.0-rc1
 [0.1.0]: https://github.com/jgpelletier/jsc-job-search-pipeline/releases/tag/v0.1.0

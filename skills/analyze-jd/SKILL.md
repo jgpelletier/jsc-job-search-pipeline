@@ -10,22 +10,23 @@ Apply that logic to produce the following output.
 
 ## Before Running — Check Role State
 
-Look up the role in the DB before doing any analysis:
+Look up the role's pre-flight state via `db.get_role_state_for_skill`:
 
 ```python
-import db.db as db, sqlite3
-conn = sqlite3.connect('pipeline.db')
-row = conn.execute('SELECT overall_fit, next_action, disqualified FROM roles WHERE id=?', (role_id,)).fetchone()
+import db.db as db
+state = db.get_role_state_for_skill(role_id)
+# state == {company, title, status, overall_fit, tech_fit, culture_fit,
+#          next_action, disqualified, flagged, open_decisions}
 ```
 
-**If the role is flagged "recommend close" or "caution — decision pending" in `next_action` or HANDOFF.md:**
+**If `state["flagged"]` is True (next_action mentions "recommend close" or "caution"):**
 Stop. Do not run analysis. Say:
 
 > "id=X ([Company]) is currently flagged [recommend close / caution]. Run analyze-jd anyway, or should I close it?"
 
 Wait for the candidate's explicit direction before proceeding.
 
-**If the role has an existing `overall_fit` score:**
+**If `state["overall_fit"]` is not None:**
 Note it before starting — you'll need it for the score revision gate after analysis.
 
 ## Required Inputs
@@ -100,37 +101,28 @@ After generating the JD analysis, automatically save it:
    - Slug convention: lowercase, hyphens, no special characters (e.g. `frontrowmd` not `frontrow-md`)
    - Include the full JD text at the bottom of the file
 
-2. **Update fit score in DB** — use the formula, save previous value first:
-   ```python
-   import sqlite3
-   conn = sqlite3.connect('pipeline.db')
-   old = conn.execute('SELECT overall_fit FROM roles WHERE id=?', (role_id,)).fetchone()[0]
-   new_overall = round(0.6 * tech_fit + 0.4 * culture_fit, 1)  # ALWAYS use this formula
-   if old != new_overall:
-       conn.execute('UPDATE roles SET previous_fit=?, tech_fit=?, culture_fit=?, overall_fit=?, updated_at=datetime("now") WHERE id=?',
-                    (old, tech_fit, culture_fit, new_overall, role_id))
-       conn.commit()
-       # Present the change to the candidate — do not silently overwrite
-       print(f"Score updated: {old} → {new_overall} (previous_fit saved)")
-   ```
+2. **Persist to the DB via `db.log_jd_analysis`** — handles previous_fit,
+   the canonical fit formula (0.6·tech + 0.4·culture), and the analysis snapshot:
 
-3. **Log to database**:
    ```python
    import db.db as db
-   db.log_analysis(
-       role_id      = role_id,
-       skill_type   = 'analyze-jd',
-       file_path    = 'references/analyses/001-pano-ai-jd-2026-02-23.md',
-       overall_fit  = new_overall,
-       verdict      = 'pursue',  # or 'pass' or 'research'
-       tool         = 'claude-code'
+   old, new, snapshot_id = db.log_jd_analysis(
+       role_id     = role_id,
+       tech_fit    = tech_fit,        # 1–10
+       culture_fit = culture_fit,     # 1–10
+       file_path   = f"references/analyses/{role_id:03d}-{slug}-jd-{date}.md",
+       verdict     = "pursue",        # or "pass" or "research"
+       fit_notes   = "[2-3 sentence summary]",
    )
+   if old != new:
+       # Present the change explicitly — never silently overwrite.
+       print(f"Score updated: {old} → {new} (previous_fit saved)")
    ```
 
-4. **Do not advance status.** Present the score and recommendation, then wait:
+3. **Do not advance status.** Present the score and recommendation, then wait:
    > "Overall fit: X/10 — [verdict]. Move to Qualified and proceed to score-fit?"
    the candidate confirms before status changes.
 
-5. **When a role closes** (offer, rejection, or withdrawn): update the scoring calibration log in
+4. **When a role closes** (offer, rejection, or withdrawn): update the scoring calibration log in
    `docs/analysis-checklist.md` — add a row with role, role_id, predicted score, and outcome.
    This table is how we detect if scoring is drifting over time.
