@@ -6,13 +6,103 @@ The agent runs these functions via Python to read/write pipeline.db
 import sqlite3
 import json
 import os
+import re
 import shutil
 import glob
 from datetime import datetime, date
 
 DB_PATH = "pipeline.db"
+MIGRATIONS_DIR = "migrations"
 BACKUP_DIR = "backups"
 BACKUP_RETAIN = 7  # days
+
+
+# ── SCHEMA MIGRATIONS ──────────────────────────────────────────────────────
+# pipeline.db is versioned via migrations/NNN-name.sql files. The first call
+# to con() in a process applies any pending migrations. See migrations/README.md.
+
+_schema_ensured = False
+_MIGRATION_FILENAME_RE = re.compile(r"^(\d{3})-[\w\-]+\.sql$")
+
+
+def _list_migrations(migrations_dir):
+    """Return [(version_int, path)] sorted by version, for files matching NNN-name.sql."""
+    if not os.path.isdir(migrations_dir):
+        return []
+    out = []
+    for fname in sorted(os.listdir(migrations_dir)):
+        m = _MIGRATION_FILENAME_RE.match(fname)
+        if m:
+            out.append((int(m.group(1)), os.path.join(migrations_dir, fname)))
+    return out
+
+
+def _current_schema_version(conn):
+    """Return the highest applied version, or 0 if schema_version doesn't exist."""
+    try:
+        row = conn.execute("SELECT MAX(version) FROM schema_version").fetchone()
+        return (row[0] or 0) if row else 0
+    except sqlite3.OperationalError:
+        return 0
+
+
+def _apply_one(conn, version, path, verbose=True):
+    """Apply a single migration file and record it in schema_version.
+
+    Tolerates 'duplicate column name' errors: a council member who
+    hand-patched their v0.1.0 DB before migrations existed may already have
+    columns that an ALTER TABLE would otherwise fail to add. We log it and
+    record the version so the migration is not retried next run.
+    """
+    name = os.path.basename(path)
+    with open(path) as f:
+        sql = f.read()
+    try:
+        conn.executescript(sql)
+    except sqlite3.OperationalError as e:
+        msg = str(e).lower()
+        if "duplicate column name" in msg:
+            if verbose:
+                print(f"  (migration {name}: column already exists — treating as applied)")
+        else:
+            raise
+    conn.execute(
+        "INSERT OR REPLACE INTO schema_version (version, migration_name) VALUES (?, ?)",
+        (version, name)
+    )
+    conn.commit()
+    if verbose:
+        print(f"✓ Applied migration {version}: {name}")
+
+
+def _apply_migrations(db_path=None, migrations_dir=None, verbose=True):
+    """Apply any migrations whose version is greater than the current schema version.
+
+    Safe to call repeatedly; pending migrations are determined by reading
+    schema_version from the target DB.
+    """
+    db_path = db_path or DB_PATH
+    migrations_dir = migrations_dir or MIGRATIONS_DIR
+    migrations = _list_migrations(migrations_dir)
+    if not migrations:
+        return
+    conn = sqlite3.connect(db_path)
+    try:
+        current = _current_schema_version(conn)
+        pending = [(v, p) for v, p in migrations if v > current]
+        for version, path in pending:
+            _apply_one(conn, version, path, verbose=verbose)
+    finally:
+        conn.close()
+
+
+def _ensure_schema():
+    """Apply pending migrations once per process. Called by con()."""
+    global _schema_ensured
+    if _schema_ensured:
+        return
+    _apply_migrations(verbose=False)
+    _schema_ensured = True
 
 
 def backup():
@@ -32,6 +122,7 @@ def backup():
         print(f"  Pruned old backup: {old}")
 
 def con():
+    _ensure_schema()
     c = sqlite3.connect(DB_PATH)
     c.row_factory = sqlite3.Row
     return c
