@@ -129,6 +129,30 @@ db.log_response(role_id, contact_name, summary="...")
 db.log_application(role_id, method="ATS Direct", resume_version="...", ...)
 db.update_contact_linkedin(contact_id, linkedin_url)
 db.disqualify(role_id, reason="...")
+
+# Skill helpers (called by skills; keep schema knowledge inside db.py)
+db.get_role_state_for_skill(role_id)          # pre-flight gate check
+db.log_jd_analysis(role_id, tech_fit, culture_fit, file_path, ...)
+db.log_culture_revision(role_id, culture_fit, file_path, ...)
+db.log_company_research(role_id, file_path, ...)
+db.log_find_contacts_run(role_id, file_path)
+
+# Session notes (drives HANDOFF.md render)
+db.add_session_note("decision",   "...", role_id=None)
+db.add_session_note("completion", "...")
+db.resolve_session_note(note_id, resolution="...")
+
+# Render outputs (pipeline.md, HANDOFF.md regenerate from DB state)
+db.render_all()
+```
+
+CLI shortcuts:
+
+```bash
+python3 db/init_db.py                # bootstrap (apply pending migrations)
+python3 db/db.py render              # regenerate pipeline.md and HANDOFF.md
+python3 db/db.py migrate             # apply pending migrations only
+python3 db/db.py note decision "Comp band on Acme not confirmed"
 ```
 
 ---
@@ -166,12 +190,14 @@ Everything else — `CLAUDE.md`, the skills, the database — works without modi
 ```
 job-search-pipeline/
 ├── CLAUDE.md                          # all judgment logic, behavior, and guardrails
-├── HANDOFF.md                         # session-state file, recreated each session
-├── pipeline.md                        # human-readable pipeline overview
+├── CHANGELOG.md                       # release history
+├── HANDOFF.md                         # render output of pipeline.db (do not hand-edit)
+├── pipeline.md                        # render output of pipeline.db (do not hand-edit)
 ├── pipeline.db                        # SQLite — single source of truth (created by init_db.py)
 ├── db/
-│   ├── init_db.py                     # run once to create pipeline.db
-│   └── db.py                          # all read/write operations
+│   ├── init_db.py                     # bootstrap: applies pending migrations
+│   └── db.py                          # read/write operations + render functions
+├── migrations/                        # versioned schema migrations (NNN-name.sql)
 ├── skills/
 │   ├── intake-screenshot/SKILL.md     # processes inbox/ images
 │   ├── job-search/SKILL.md            # periodic internet search
@@ -191,8 +217,9 @@ job-search-pipeline/
 │   ├── mnookin.md                     # must-haves and must-nots
 │   ├── stories/                       # verified work stories
 │   └── analyses/                      # per-role artifacts produced by the pipeline
-└── docs/
-    └── analysis-checklist.md          # JD analysis hard/soft gates + scoring calibration log
+├── docs/
+│   └── analysis-checklist.md          # JD analysis hard/soft gates + scoring calibration log
+└── tests/                             # stdlib-unittest coverage of migrations, render, skill helpers
 ```
 
 ---
