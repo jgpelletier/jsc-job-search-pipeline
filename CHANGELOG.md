@@ -8,7 +8,28 @@ covered by SemVer is the `db.*` function names, the skill names, the
 
 ## [Unreleased]
 
-(No changes since v0.2.3.)
+(No changes since v0.2.4.)
+
+## [0.2.4] — 2026-04-28
+
+### Fixed
+- **Render no longer rewrites files when nothing changed.** Every session
+  start re-rendered `pipeline.md` and `HANDOFF.md` with a fresh timestamp,
+  producing a no-op diff that polluted `git status` and tripped the
+  uncommitted-changes stop hook. `_write_render_if_changed` now strips the
+  autogen header and "Last rendered" line before comparing, and skips the
+  write when the meaningful content is identical. The committed file's
+  mtime stays stable across no-op re-renders.
+
+### Added
+- `tests/test_render.py::test_no_op_rerender_does_not_touch_file` —
+  asserts mtime is preserved when the DB hasn't changed.
+- `tests/test_render.py::test_rerender_writes_when_db_changes` — inverse
+  guard so the optimization can't accidentally suppress real updates.
+
+### Compatibility
+- No public API changes. `render_pipeline_md()` and `render_handoff_md()`
+  still return the path; whether a write happened is internal.
 
 ## [0.2.3] — 2026-04-28
 
@@ -238,7 +259,8 @@ detail. The high-level summary:
   `inbox/processed/`.
 - Daily ops: `python3 db/db.py pipeline | action | stats`.
 
-[Unreleased]: https://github.com/jgpelletier/jsc-job-search-pipeline/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/jgpelletier/jsc-job-search-pipeline/compare/v0.2.4...HEAD
+[0.2.4]: https://github.com/jgpelletier/jsc-job-search-pipeline/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/jgpelletier/jsc-job-search-pipeline/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/jgpelletier/jsc-job-search-pipeline/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/jgpelletier/jsc-job-search-pipeline/compare/v0.2.0...v0.2.1

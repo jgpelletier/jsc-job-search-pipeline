@@ -132,6 +132,49 @@ class RenderTests(unittest.TestCase):
             return "\n".join(out)
         self.assertEqual(strip(first), strip(second))
 
+    def test_no_op_rerender_does_not_touch_file(self):
+        """A second render against an unchanged DB must leave the file alone.
+
+        Regression guard for the SessionStart-hook churn: every session
+        start re-rendered the file with a fresh timestamp, producing a no-op
+        diff that polluted `git status`. _write_render_if_changed should
+        skip the write when only the timestamps would differ.
+        """
+        dbmod.add_role("Acme", "Sr PM, Platform", overall_fit=7.6)
+        p = dbmod.render_pipeline_md()
+        h = dbmod.render_handoff_md()
+        mtime_p = os.path.getmtime(p)
+        mtime_h = os.path.getmtime(h)
+        first_p = self._read(p)
+        first_h = self._read(h)
+
+        # Wait long enough that a write would produce a different mtime,
+        # then re-render. The file must NOT be rewritten.
+        import time
+        time.sleep(1.1)
+        dbmod.render_pipeline_md()
+        dbmod.render_handoff_md()
+
+        self.assertEqual(os.path.getmtime(p), mtime_p,
+                         "pipeline.md was rewritten despite no DB change")
+        self.assertEqual(os.path.getmtime(h), mtime_h,
+                         "HANDOFF.md was rewritten despite no DB change")
+        self.assertEqual(self._read(p), first_p)
+        self.assertEqual(self._read(h), first_h)
+
+    def test_rerender_writes_when_db_changes(self):
+        """Inverse of the no-op guard — a real DB change must hit the file."""
+        rid = dbmod.add_role("Acme", "Sr PM, Platform", overall_fit=7.6)
+        p = dbmod.render_pipeline_md()
+        first = self._read(p)
+
+        dbmod.update_status(rid, "Qualified", note="Looks good")
+        dbmod.render_pipeline_md()
+        second = self._read(p)
+
+        self.assertNotEqual(first, second)
+        self.assertIn("Qualified", second)
+
     def test_analyses_index_groups_by_role(self):
         r1 = dbmod.add_role("Acme", "Sr PM, Platform")
         r2 = dbmod.add_role("Beacon", "Senior PM")
