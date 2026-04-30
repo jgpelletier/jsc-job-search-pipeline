@@ -42,22 +42,51 @@ For each role found, apply fit scoring from CLAUDE.md:
 - Level check: Senior PM tier?
 - Duplicate check: already in pipeline.db?
 
-## Step 4: Fetch JD Text (required before writing to DB)
+## Step 4: Verify the role is open, then fetch JD text (required before writing to DB)
 
-**For every qualifying role, fetch the full JD text from the specific posting URL before adding to DB.**
-Do not add a role with a blank `jd_text` — that breaks `analyze-jd` downstream.
+**Drop the role if it is closed. Add the role only after canonical confirmation.**
 
-```
-# For each promising result:
-# 1. Identify the specific posting URL (Lever, Greenhouse, Ashby, Workday, LinkedIn — not a jobs homepage)
-# 2. WebFetch that URL and extract full JD text
-# 3. If WebFetch returns 404 or empty:
-#    - Try a job board mirror (remotive.com, wellfound.com, ycombinator.com/jobs, linkedin.com/jobs)
-#    - If still not found: add role but set next_action="VERIFY OPEN: JD text not captured — confirm posting live"
-#    - Log fit_notes: "Posting URL [url] returned 404 on [date] — verify before analyzing"
-```
+The risk being managed: search engines and aggregator mirrors keep cached job pages live long after the role closes. A mirror's "open until [date]" is descriptive metadata from a snapshot, not a live signal. Acting on a mirror without canonical confirmation produces confidently-wrong "strong match" recommendations to closed roles.
 
-**Write to Database only after JD text is in hand:**
+### Canonical-page precedence rule
+
+The canonical posting URL is the source of truth on open/closed status. The canonical URL is:
+- The company's own ATS posting page — `*.greenhouse.io`, `jobs.lever.co`, `*.ashbyhq.com`, `*.workable.com`, `*.workday.com`, `*.myworkdayjobs.com`, `*.bamboohr.com`
+- Or the company's own `careers` / `jobs` page if no ATS URL is available
+
+**Mirrors are NOT canonical** — `remotive.com`, `wellfound.com`, `ycombinator.com/jobs`, `sportstechjobs.com`, `remoterocketship.com`, `weworkremotely.com`, LinkedIn job-clones, and any aggregator. Mirrors are useful for discovery, not for verification.
+
+### Verification flow
+
+For each qualifying role:
+
+1. **Locate the canonical URL** — usually linked from the mirror's "Apply on company site" button, or by searching `"<role title>" site:greenhouse.io` / `site:lever.co` / `site:<company>.com/careers`.
+
+2. **WebFetch the canonical URL** and check, in order:
+
+   a. **HTTP error or redirect to a generic index** (404, 410, redirect to `/careers` with no role-specific content) → role is closed. Drop it. Note in summary as `[Company] [Role] — closed (canonical 404)`.
+
+   b. **Page renders but the role is not on it** (e.g., the company's `/careers` page returns successfully but the specific role title and JD body are absent) → role is closed. Drop it.
+
+   c. **Closure phrase present** in canonical page text — any of:
+      - "no longer accepting applications"
+      - "this position has been filled"
+      - "this position is no longer available"
+      - "this job has expired"
+      - "this position is closed"
+      - "we have filled this role"
+
+      → role is closed. Drop it.
+
+   d. **Canonical page returns full JD with apply form / Submit button** → role is open. Capture `jd_text` and proceed to write.
+
+3. **If you cannot locate any canonical URL** (rare — usually means the company is too small to have an ATS and the only listing is on a mirror): do NOT promote to "Strong Match." Add with `next_action="VERIFY OPEN: only mirror data; canonical not located"` and surface to the candidate explicitly.
+
+### Excluded-company check (closed-loop with CLAUDE.md)
+
+Before writing the role: check `references/cmf.md` `current_employment` and `Excluded companies`. If the role's company matches, drop it and note `[Company] — excluded (matches cmf.md current/excluded)` in the summary. Never silently surface a role at the candidate's current employer or a company they have already excluded.
+
+**Write to Database only after canonical confirmation:**
 
 ```python
 role_id = db.add_role(

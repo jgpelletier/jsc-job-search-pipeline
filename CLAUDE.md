@@ -43,8 +43,22 @@ If any is still a stub → invoke the `setup` skill. Do not draft from stub refe
 ### Step 3 — Does `HANDOFF.md` exist?
 
 - **Exists** → read it. This is the current pipeline state, open decisions, and the next action.
-- **Missing** (and Steps 1–2 passed) → this is a returning user who closed the last session
-  cleanly. Ask what they want to work on and create `HANDOFF.md` after the first task completes.
+- **Missing** (and Steps 1–2 passed) → this is either a returning user who closed the last
+  session cleanly OR a freshly bootstrapped instance. Before invoking any non-read skill
+  (`job-search`, `intake-screenshot`, any `draft-*`), ask the candidate one question and wait:
+
+  > "Quick state check before we work — are you currently employed, and is anything in
+  > flight (offer pending, interviewing, recently won)? I'll write what you tell me to
+  > `references/cmf.md` so I don't surface roles you shouldn't be looking at."
+
+  If the candidate names a current employer or an in-flight role, write it to the
+  `Current state` and `Excluded companies` sections of `references/cmf.md` (creating the
+  sections if missing) before any further skill runs. Then create `HANDOFF.md` after the
+  first task completes.
+
+  **Closed-loop rule:** never surface a role at any company in `Excluded companies` or
+  matching `current_employment`. If `job-search` returns one, drop it from the result set
+  and note the exclusion in the search summary.
 
 ### Loading strategy
 
