@@ -28,12 +28,8 @@ Three layers:
 **Prerequisites:** [Claude Code](https://claude.ai/code), Python 3.x
 
 ```bash
-# 1. Clone and initialize the database
 git clone https://github.com/yourhandle/job-search-pipeline
 cd job-search-pipeline
-python3 db/init_db.py
-
-# 2. Open the project in Claude Code
 claude   # or open the folder in the desktop app
 ```
 
@@ -41,9 +37,9 @@ In your first conversation, say:
 
 > **help me set this up**
 
-The `setup` skill will interview you — paste your resume, walk through three work stories, name your must-haves and must-nots, and confirm your positioning. It writes the four files in `references/` that the agents read every turn. Takes 15–25 minutes.
+The `setup` skill detects a missing `pipeline.db`, asks before running `python3 db/init_db.py`, then interviews you — paste your resume, walk through three work stories, name your must-haves and must-nots, confirm your positioning. It writes the four files in `references/` that the agents read every turn. Takes 15–25 minutes.
 
-Prefer to configure by hand? Edit `references/resume.md`, `references/cmf.md`, `references/mnookin.md`, and add story files to `references/stories/` directly. The worked example in `references/example/` shows what each one looks like filled in.
+Prefer to configure by hand? Run `python3 db/init_db.py`, then edit `references/resume.md`, `references/cmf.md`, `references/mnookin.md`, and add story files to `references/stories/` directly. The worked example in `references/example/` shows what each one looks like filled in.
 
 Once setup is done:
 - Drop a job posting screenshot into `inbox/` and say "process my inbox"
