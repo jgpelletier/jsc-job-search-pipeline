@@ -181,7 +181,8 @@ None.
 
 ## Step 8: Ready-to-Demo Summary
 
-Print a closing summary. Keep it short.
+Print a closing summary. Keep it short, and tell the candidate what to expect from future
+sessions so they do not have to remember the skill catalog.
 
 ```
 Setup complete.
@@ -194,13 +195,18 @@ Configured:
 - Stories:  references/stories/01-..., 02-..., 03-...
 - Handoff:  HANDOFF.md
 
-Ready to run the first intake. Try one of:
+From now on, every session opens with a short dashboard — pipeline state,
+open decisions, and a list of things you can ask for. You will not need
+to remember the skill names; the dashboard reminds you.
+
+To run your first intake right now, try one of:
   • Drop a screenshot into inbox/ and say "process my inbox"
   • Paste a JD directly and say "score this role"
   • Say "run a job search" to seed the pipeline from scratch
 ```
 
-Do not score, draft, or research in this session. Setup ends here. The next conversation is the first real intake.
+Do not score, draft, or research in this session. Setup ends here. The next conversation is the
+first real intake — and the agent will open it with the dashboard.
 
 ## What This Skill Does Not Do
 
