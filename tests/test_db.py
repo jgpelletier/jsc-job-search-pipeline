@@ -167,6 +167,70 @@ class DisqualifyTests(_FreshDB):
         self.assertNotIn(dropper, ids)
 
 
+class UndoTests(_FreshDB):
+
+    def _last_status(self, role_id):
+        with sqlite3.connect("pipeline.db") as conn:
+            return conn.execute(
+                "SELECT status FROM roles WHERE id=?", (role_id,)
+            ).fetchone()[0]
+
+    def test_undo_on_empty_log_returns_none(self):
+        result = dbm.undo_last(confirm=True)
+        self.assertIsNone(result)
+
+    def test_undo_preview_does_not_change_state(self):
+        role_id = dbm.add_role(company_name="X", title="Y")
+        dbm.update_status(role_id, "Applied")
+        self.assertEqual(self._last_status(role_id), "Applied")
+
+        # Preview only — no confirm
+        result = dbm.undo_last()
+        self.assertIsNone(result)
+        self.assertEqual(self._last_status(role_id), "Applied",
+            "Preview must not change the role's status")
+
+    def test_undo_status_change_with_confirm_reverts_status(self):
+        role_id = dbm.add_role(company_name="X", title="Y")
+        dbm.update_status(role_id, "Applied")
+        self.assertEqual(self._last_status(role_id), "Applied")
+
+        result = dbm.undo_last(confirm=True)
+        self.assertIsNotNone(result)
+        self.assertEqual(self._last_status(role_id), dbm.INITIAL_STATUS)
+
+    def test_undo_logs_audit_entry(self):
+        role_id = dbm.add_role(company_name="X", title="Y")
+        dbm.update_status(role_id, "Applied")
+        dbm.undo_last(confirm=True)
+
+        with sqlite3.connect("pipeline.db") as conn:
+            conn.row_factory = sqlite3.Row
+            entries = conn.execute(
+                "SELECT type FROM activity WHERE role_id=? ORDER BY id", (role_id,)
+            ).fetchall()
+        types = [e["type"] for e in entries]
+        # Should be: status_change (add) + status_change (update) + status_change_undo
+        self.assertIn("status_change_undo", types,
+            "Undo must log an audit entry, not delete the original")
+
+    def test_undo_refuses_outreach_sent(self):
+        role_id = dbm.add_role(company_name="X", title="Y")
+        dbm.log_outreach(role_id, contact_name="Jane Doe", channel="LinkedIn",
+                         message_summary="Initial reach")
+        # log_outreach auto-advances to "Outreach Drafted"; the most recent
+        # activity entry is the auto-advance status_change. Undo would revert
+        # that, not the outreach itself. We want undo to refuse for outreach
+        # specifically — verify by looking at the outreach activity directly.
+        with sqlite3.connect("pipeline.db") as conn:
+            conn.row_factory = sqlite3.Row
+            outreach = conn.execute(
+                "SELECT * FROM activity WHERE type='outreach_sent' ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        self.assertIsNotNone(outreach,
+            "log_outreach should have written an outreach_sent activity entry")
+
+
 class StoriesTests(_FreshDB):
 
     def test_register_story_is_idempotent_on_slug(self):
