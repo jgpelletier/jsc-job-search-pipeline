@@ -68,6 +68,37 @@ every turn is the wrong default.
 Run `python3 db/db.py pipeline` or `db.needs_action()` only when the candidate asks for pipeline
 state. Do not greedy-load on every session.
 
+### First message contract — the dashboard
+
+After the state checks pass and HANDOFF.md is loaded, the agent's first reply in a session is
+always a short dashboard. The user's interface is a chat textbox; everything the agent has
+loaded is invisible to them unless surfaced. Make "where am I + what can I do" visible without
+the user having to ask.
+
+Format (5–7 lines, scannable):
+
+```
+Pipeline: N active, M need action this week ([top 1–3 company names])
+Open decisions: [pulled from HANDOFF.md "Open Decisions"; "none" if empty]
+You can: "process my inbox" · "score a JD" · "prep interview"
+         "review pipeline" · "draft outreach" · "find contacts"
+HANDOFF.md and references/analyses/ have the full picture.
+```
+
+Run `db.needs_action()` to source the action count and top names. Do not list every active role.
+If HANDOFF.md is missing (returning user, clean prior session) print the dashboard with "Pipeline:
+no active roles yet" and skip the open-decisions line.
+
+For first-time setup (Step 2 invoked the setup skill), skip the dashboard — the setup skill owns
+the entire first session.
+
+### If intent is unclear — ask, do not guess
+
+If the user's first message after the dashboard does not map cleanly to a known skill or workflow
+(e.g., "help me with this role" with no JD attached, "look at this" with no link), ask one
+clarifying question before invoking any skill. Misrouted intent that silently produces partial
+work is worse than a one-line clarifying prompt.
+
 ## Session End Protocol
 
 At the end of every working session (when the candidate signals done, or after any
@@ -114,6 +145,21 @@ Never assume remote is available — verify from JD.
 ### Maintain pipeline integrity
 After any completed task (research, application, outreach),
 prompt the candidate to update pipeline.md with current status and next action.
+
+### Narrate state changes — DB writes are otherwise invisible
+File writes (`references/analyses/*.md`, screenshots moved to `inbox/processed/`) surface as
+permission prompts the candidate can see. DB writes do not. Whenever you advance a status, log
+outreach, log an application, add a contact, or revise a fit score, say so in one line so the
+candidate's mental model stays in sync with the DB:
+
+> "Status: Researching → Applied for role 56 (Wheel)."
+> "Logged outreach: Ian Goodman via LinkedIn for role 56."
+> "Score updated: 7.5 → 8.2 for role 23 (previous_fit saved)."
+
+This is in addition to the explicit before/after audit lines required for overwrites in the Data
+Integrity Rules below — those are for changes to load-bearing fields (`company_id`, `title`,
+`overall_fit`, `status`); narration here covers the routine forward writes that would otherwise
+disappear.
 
 ---
 
