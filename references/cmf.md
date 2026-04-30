@@ -4,6 +4,24 @@
 >
 > If you do not have one yet, the `/setup` flow (or a conversation with the strategist agent) will help you build it.
 
+## Current state
+
+> The agent reads this every session and uses it to refuse to surface roles you should not see.
+> Update whenever your employment situation changes.
+
+- **current_employment:** [Company name | None — actively searching | None — between roles]
+- **start_date:** [YYYY-MM-DD or N/A]
+- **status:** [active | pending start | consulting alongside | None]
+- **last_reviewed:** [YYYY-MM-DD]
+
+### Excluded companies
+
+A role at any company in this list will not be surfaced as a match. Include the current
+employer, any company you have already won an offer from, and any company you have
+explicitly withdrawn from or declined.
+
+- [Company] — [reason: current employer | already won | withdrew | declined offer | other]
+
 ## The one line
 > [Your single-sentence positioning statement.]
 

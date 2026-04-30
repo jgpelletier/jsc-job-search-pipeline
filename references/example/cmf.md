@@ -2,6 +2,19 @@
 
 > Fictional persona. Use as a shape reference, not as content.
 
+## Current state
+
+- **current_employment:** Beacon Pay
+- **start_date:** 2023-03-01
+- **status:** active
+- **last_reviewed:** 2026-04-30
+
+### Excluded companies
+
+- Beacon Pay — current employer
+- Northbridge Bank — former employer (left 2023, no return)
+- Tally Pay — former employer (acquired into Beacon Pay)
+
 ## The one line
 > Payments-infrastructure PM who ships systems engineering teams will depend on — issuing migrations, real-time authorization, evaluation harnesses for risk models.
 
