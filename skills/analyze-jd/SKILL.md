@@ -100,12 +100,13 @@ After generating the JD analysis, automatically save it:
    - Slug convention: lowercase, hyphens, no special characters (e.g. `frontrowmd` not `frontrow-md`)
    - Include the full JD text at the bottom of the file
 
-2. **Update fit score in DB** — use the formula, save previous value first:
+2. **Update fit score in DB** — use the canonical formula, save previous value first:
    ```python
    import sqlite3
+   import db.db as db
    conn = sqlite3.connect('pipeline.db')
    old = conn.execute('SELECT overall_fit FROM roles WHERE id=?', (role_id,)).fetchone()[0]
-   new_overall = round(0.6 * tech_fit + 0.4 * culture_fit, 1)  # ALWAYS use this formula
+   new_overall = db.compute_overall_fit(tech_fit, culture_fit)  # canonical: db/db.py
    if old != new_overall:
        conn.execute('UPDATE roles SET previous_fit=?, tech_fit=?, culture_fit=?, overall_fit=?, updated_at=datetime("now") WHERE id=?',
                     (old, tech_fit, culture_fit, new_overall, role_id))

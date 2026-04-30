@@ -15,6 +15,39 @@ BACKUP_DIR = "backups"
 BACKUP_RETAIN = 7  # days
 
 
+# ── CANONICAL CONSTANTS ────────────────────────────────────────────────────
+# Single source of truth for fit-score weighting and pipeline status values.
+# CLAUDE.md and skills/* restate these in prose for passive context, but the
+# values below are what the code enforces. Change here first; the prose lines
+# in CLAUDE.md, skills/analyze-jd/SKILL.md, and skills/score-fit/SKILL.md
+# call out this file as canonical and need updating to match.
+
+TECH_WEIGHT = 0.6
+CULTURE_WEIGHT = 0.4
+
+VALID_STATUSES = [
+    "Researching", "Qualified", "Outreach Drafted", "Applied",
+    "Screening", "Interviewing", "Offer", "Closed Won", "Closed Lost",
+]
+INITIAL_STATUS    = "Researching"
+DISQUALIFY_STATUS = "Closed Lost"
+
+
+def compute_overall_fit(tech_fit, culture_fit):
+    """Canonical fit-score formula: 60% technical + 40% culture, rounded to 1 decimal.
+
+    Examples:
+        tech=8, culture=7  → 7.6
+        tech=7, culture=8  → 7.4
+        tech=9, culture=7  → 8.2
+
+    The weighting lives in TECH_WEIGHT / CULTURE_WEIGHT module constants. If
+    you change the weights, also update the prose in CLAUDE.md and the
+    analyze-jd / score-fit skills where the formula is restated.
+    """
+    return round(TECH_WEIGHT * tech_fit + CULTURE_WEIGHT * culture_fit, 1)
+
+
 def backup():
     """Create a timestamped backup of pipeline.db. One per day, keeps last 7."""
     if not os.path.exists(DB_PATH):
@@ -138,7 +171,7 @@ def search_roles(query):
 # ── WRITE OPERATIONS ───────────────────────────────────────────────────────
 
 # Schema note: fit is stored as overall_fit (not fit_score). Components: tech_fit, culture_fit.
-# Formula: overall_fit = 0.6 * tech_fit + 0.4 * culture_fit
+# The formula lives in compute_overall_fit() above — call it, do not inline 0.6/0.4 in callers.
 # previous_fit stores the prior score when a revision is made — never overwrite without saving it first.
 def add_role(company_name, title, url=None, source="manual", source_file=None,
              tech_fit=None, culture_fit=None, overall_fit=None, remote=None,
@@ -182,7 +215,7 @@ def add_role(company_name, title, url=None, source="manual", source_file=None,
         role_id = cur.lastrowid
 
         _log(db, company_id=company_id, role_id=role_id,
-             type="status_change", new_status="Researching",
+             type="status_change", new_status=INITIAL_STATUS,
              detail=f"Role added via {source}")
 
     print(f"✓ Added: {title} at {company_name} (id={role_id})")
@@ -191,10 +224,8 @@ def add_role(company_name, title, url=None, source="manual", source_file=None,
 
 def update_status(role_id, new_status, note=None, next_action=None, next_action_due=None):
     """Move a role to a new status and log it."""
-    valid = ["Researching","Qualified","Outreach Drafted","Applied",
-             "Screening","Interviewing","Offer","Closed Won","Closed Lost"]
-    if new_status not in valid:
-        print(f"⚠ Invalid status. Choose from: {valid}")
+    if new_status not in VALID_STATUSES:
+        print(f"⚠ Invalid status. Choose from: {VALID_STATUSES}")
         return
     with con() as db:
         r = db.execute("SELECT status, company_id FROM roles WHERE id=?", (role_id,)).fetchone()
@@ -239,7 +270,7 @@ def log_outreach(role_id, contact_name, contact_title=None, channel="LinkedIn",
              type="outreach_sent",
              detail=f"{channel} → {contact_name}: {message_summary or '(no summary)'}")
 
-        if r["status"] == "Researching":
+        if r["status"] == INITIAL_STATUS:
             update_status(role_id, "Outreach Drafted",
                           note="Auto-advanced after outreach logged")
     print(f"✓ Outreach logged: {contact_name} via {channel}")
@@ -269,7 +300,7 @@ def disqualify(role_id, reason):
             (reason, role_id)
         )
         _log(db, company_id=r["company_id"], role_id=role_id,
-             type="status_change", old_status=r["status"], new_status="Closed Lost",
+             type="status_change", old_status=r["status"], new_status=DISQUALIFY_STATUS,
              detail=f"Disqualified: {reason}")
     print(f"✓ Role {role_id} disqualified: {reason}")
 

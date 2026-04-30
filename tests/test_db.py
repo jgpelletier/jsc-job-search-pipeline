@@ -167,5 +167,94 @@ class DisqualifyTests(_FreshDB):
         self.assertNotIn(dropper, ids)
 
 
+class CanonicalConstantsTests(unittest.TestCase):
+    """Lock in the canonical constants and verify the docs match the code.
+
+    These tests do not need a fresh DB — they're checking module-level state
+    and the contents of CLAUDE.md / skills/*.md.
+    """
+
+    def test_compute_overall_fit_matches_documented_examples(self):
+        # Examples documented in compute_overall_fit's docstring
+        self.assertEqual(dbm.compute_overall_fit(8, 7), 7.6)
+        self.assertEqual(dbm.compute_overall_fit(7, 8), 7.4)
+        self.assertEqual(dbm.compute_overall_fit(9, 7), 8.2)
+
+    def test_weights_sum_to_one(self):
+        self.assertAlmostEqual(dbm.TECH_WEIGHT + dbm.CULTURE_WEIGHT, 1.0)
+
+    def test_valid_statuses_has_expected_funnel(self):
+        # The order matters — it's the funnel sequence the agent follows.
+        self.assertEqual(dbm.VALID_STATUSES, [
+            "Researching", "Qualified", "Outreach Drafted", "Applied",
+            "Screening", "Interviewing", "Offer", "Closed Won", "Closed Lost",
+        ])
+        self.assertEqual(dbm.INITIAL_STATUS,    "Researching")
+        self.assertEqual(dbm.DISQUALIFY_STATUS, "Closed Lost")
+
+    def test_update_status_rejects_invalid_status(self):
+        # This one needs a DB. Use the _FreshDB pattern inline.
+        cwd = os.getcwd()
+        tmp = tempfile.mkdtemp(prefix="jspipeline-status-")
+        try:
+            os.chdir(tmp)
+            initm.init()
+            role_id = dbm.add_role(company_name="X", title="Y")
+            dbm.update_status(role_id, "BogusStatus")
+            with sqlite3.connect("pipeline.db") as conn:
+                status = conn.execute(
+                    "SELECT status FROM roles WHERE id=?", (role_id,)
+                ).fetchone()[0]
+            self.assertEqual(
+                status, dbm.INITIAL_STATUS,
+                "update_status should refuse invalid values and leave status unchanged"
+            )
+        finally:
+            os.chdir(cwd)
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+class DocsSyncTests(unittest.TestCase):
+    """The canonical constants live in db.py, but CLAUDE.md and the skills
+    restate them in prose for passive context. These tests catch drift between
+    the prose and the code — when the code changes, the prose must too.
+    """
+
+    @staticmethod
+    def _read(rel_path):
+        with open(os.path.join(PROJECT_ROOT, rel_path)) as f:
+            return f.read()
+
+    def test_claude_md_states_current_weights(self):
+        text = self._read("CLAUDE.md")
+        # Match the prose form: "60% technical + 40% culture"
+        tech_pct = int(dbm.TECH_WEIGHT * 100)
+        culture_pct = int(dbm.CULTURE_WEIGHT * 100)
+        self.assertIn(
+            f"{tech_pct}% technical + {culture_pct}% culture", text,
+            f"CLAUDE.md must state the weighting as '{tech_pct}% technical + {culture_pct}% culture'"
+        )
+
+    def test_claude_md_lists_all_valid_statuses(self):
+        text = self._read("CLAUDE.md")
+        for status in dbm.VALID_STATUSES:
+            self.assertIn(
+                status, text,
+                f"CLAUDE.md must mention status '{status}' from VALID_STATUSES"
+            )
+
+    def test_skills_do_not_inline_the_formula(self):
+        """analyze-jd and score-fit should call db.compute_overall_fit, not
+        restate the 0.6/0.4 multiplication inline. If you change the weights,
+        only one place needs updating."""
+        for skill in ("analyze-jd", "score-fit"):
+            text = self._read(f"skills/{skill}/SKILL.md")
+            self.assertNotIn(
+                "0.6 * tech_fit", text,
+                f"skills/{skill}/SKILL.md must not inline the formula — "
+                f"call db.compute_overall_fit instead"
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -67,9 +67,10 @@ After generating the fit score, automatically save it:
 2. **Update culture_fit in DB** — save previous value if score changes:
    ```python
    import sqlite3
+   import db.db as db
    conn = sqlite3.connect('pipeline.db')
    old = conn.execute('SELECT overall_fit, culture_fit FROM roles WHERE id=?', (role_id,)).fetchone()
-   new_overall = round(0.6 * tech_fit + 0.4 * new_culture_fit, 1)
+   new_overall = db.compute_overall_fit(tech_fit, new_culture_fit)  # canonical: db/db.py
    if old[0] != new_overall:
        conn.execute('UPDATE roles SET previous_fit=?, culture_fit=?, overall_fit=?, updated_at=datetime("now") WHERE id=?',
                     (old[0], new_culture_fit, new_overall, role_id))

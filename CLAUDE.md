@@ -154,7 +154,10 @@ Any confirmed must-not warrants a direct conversation with the candidate before 
 - 4–5: Multiple ⚠️, 1–2 possible must-nots
 - 1–3: Must-nots confirmed or must-haves mostly ❌
 
-**Overall = 60% technical + 40% culture**
+**Overall = 60% technical + 40% culture**, rounded to 1 decimal.
+Canonical implementation: `db.compute_overall_fit(tech_fit, culture_fit)` — call it
+when computing or updating a score, do not inline `0.6` / `0.4` in skill code.
+
 - 8–10: Strong pursue
 - 6–7: Pursue with eyes open, flag gaps
 - 4–5: Weak fit, only if there is a specific reason
@@ -379,6 +382,9 @@ db.verify()                                  # reconcile DB ↔ filesystem (run 
 Valid statuses (in order):
 `Researching` → `Qualified` → `Outreach Drafted` → `Applied` →
 `Screening` → `Interviewing` → `Offer` → `Closed Won` / `Closed Lost`
+
+Canonical list: `db.VALID_STATUSES`. `db.update_status()` rejects anything not in
+that list. `INITIAL_STATUS` and `DISQUALIFY_STATUS` name the two special states.
 
 ---
 
