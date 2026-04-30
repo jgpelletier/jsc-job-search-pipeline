@@ -246,6 +246,7 @@ def update_status(role_id, new_status, note=None, next_action=None, next_action_
 def log_outreach(role_id, contact_name, contact_title=None, channel="LinkedIn",
                  message_summary=None):
     """Record that outreach was sent."""
+    should_advance = False
     with con() as db:
         r = db.execute("SELECT company_id, status FROM roles WHERE id=?", (role_id,)).fetchone()
         if not r:
@@ -270,9 +271,13 @@ def log_outreach(role_id, contact_name, contact_title=None, channel="LinkedIn",
              type="outreach_sent",
              detail=f"{channel} → {contact_name}: {message_summary or '(no summary)'}")
 
-        if r["status"] == INITIAL_STATUS:
-            update_status(role_id, "Outreach Drafted",
-                          note="Auto-advanced after outreach logged")
+        should_advance = (r["status"] == INITIAL_STATUS)
+
+    # update_status opens its own connection — call it outside the `with con()`
+    # block above so SQLite does not block on a held write lock.
+    if should_advance:
+        update_status(role_id, "Outreach Drafted",
+                      note="Auto-advanced after outreach logged")
     print(f"✓ Outreach logged: {contact_name} via {channel}")
 
 
@@ -691,6 +696,71 @@ def get_stories_for(ref_type, ref_id):
             ORDER BY sr.created_at
         """, (ref_type, ref_id)).fetchall()
     return [dict(r) for r in rows]
+
+
+# ── UNDO ───────────────────────────────────────────────────────────────────
+
+def undo_last(confirm=False):
+    """Revert the most recent reversible DB write.
+
+    Currently supports `status_change` (status reverted to old_status). Other
+    activity types — outreach_sent, application_submitted, score_revision —
+    require manual reversal because they have side effects (a sent message,
+    a submitted application) the DB cannot un-do; undo will print what would
+    be reversed and refuse to act.
+
+    Default is preview-only. Pass `confirm=True` to execute. The original
+    activity entry is preserved; undo logs a `status_change_undo` row so the
+    history is auditable.
+
+    Returns the activity id that was undone, or None if nothing was reverted.
+    """
+    with con() as db:
+        last = db.execute(
+            "SELECT * FROM activity ORDER BY logged_at DESC, id DESC LIMIT 1"
+        ).fetchone()
+
+    if not last:
+        print("Nothing to undo — activity log is empty.")
+        return None
+
+    print(f"\nLast activity (id={last['id']}, {last['logged_at'][:19]}):")
+    print(f"  type:   {last['type']}")
+    print(f"  detail: {last['detail']}")
+
+    if last["type"] != "status_change":
+        print(f"\n⚠ Type '{last['type']}' has side effects undo cannot reverse.")
+        print(f"  Manual reversal: see Database Operations in CLAUDE.md.")
+        return None
+
+    if not last["old_status"]:
+        print("\n⚠ No old_status on this entry (likely an initial 'Researching' add).")
+        print("  To remove the role entirely, use db.disqualify() with a reason.")
+        return None
+
+    if not last["role_id"]:
+        print("\n⚠ No role_id on this entry. Cannot revert.")
+        return None
+
+    print(f"\nWould revert role {last['role_id']}: "
+          f"{last['new_status']} → {last['old_status']}")
+
+    if not confirm:
+        print("To execute: db.undo_last(confirm=True)")
+        return None
+
+    with con() as db:
+        db.execute(
+            "UPDATE roles SET status=? WHERE id=?",
+            (last["old_status"], last["role_id"])
+        )
+        _log(db, company_id=last["company_id"], role_id=last["role_id"],
+             type="status_change_undo",
+             old_status=last["new_status"], new_status=last["old_status"],
+             detail=f"Undo of activity id={last['id']}")
+    print(f"✓ Reverted role {last['role_id']}: "
+          f"{last['new_status']} → {last['old_status']}")
+    return last["id"]
 
 
 # ── INTEGRITY OPERATIONS ───────────────────────────────────────────────────

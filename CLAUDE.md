@@ -82,6 +82,7 @@ Pipeline: N active, M need action this week ([top 1–3 company names])
 Open decisions: [pulled from HANDOFF.md "Open Decisions"; "none" if empty]
 You can: "process my inbox" · "score a JD" · "prep interview"
          "review pipeline" · "draft outreach" · "find contacts"
+         (or "undo that" to revert the most recent status change)
 HANDOFF.md and references/analyses/ have the full picture.
 ```
 
@@ -427,6 +428,10 @@ db.log_search_run(...)                      # record a search run
 db.register_story(slug, file_path, title)    # track a story file (idempotent on slug)
 db.link_story(slug, ref_type, ref_id)        # record story → application/analysis/outreach
 db.get_stories_for(ref_type, ref_id)         # what stories backed this artifact
+
+# Undo (status changes only — outreach/applications need manual reversal)
+db.undo_last()                               # preview the most recent reversible action
+db.undo_last(confirm=True)                   # execute the revert; logs an audit entry
 
 # Integrity
 db.verify()                                  # reconcile DB ↔ filesystem (run before HANDOFF)
