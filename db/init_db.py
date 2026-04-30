@@ -140,6 +140,34 @@ def init():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_analysis_skill ON analysis_snapshots(skill_type)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_analysis_generated ON analysis_snapshots(generated_at)")
 
+    # ── Stories ───────────────────────────────────────────────────────────
+    # Verified work-story files in references/stories/ as first-class records.
+    # The slug (filename without .md) is the canonical identity used by skills
+    # to reference a story when drafting bullets, cover letters, or outreach.
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS stories (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        slug            TEXT NOT NULL UNIQUE,       -- e.g. "01-platform-migration"
+        file_path       TEXT NOT NULL,              -- relative path: references/stories/01-platform-migration.md
+        title           TEXT,                       -- optional human-readable title
+        created_at      TEXT DEFAULT (datetime('now'))
+    )""")
+
+    # Join table: which stories backed which artifact (application, analysis, outreach).
+    # Records "this draft used these stories" so interview prep can answer
+    # "what did I tell them this story was?" weeks later.
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS story_refs (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        story_id        INTEGER NOT NULL REFERENCES stories(id),
+        ref_type        TEXT NOT NULL,              -- 'application' | 'analysis' | 'outreach'
+        ref_id          INTEGER NOT NULL,           -- foreign id for the ref_type
+        created_at      TEXT DEFAULT (datetime('now'))
+    )""")
+
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_story_refs_story ON story_refs(story_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_story_refs_target ON story_refs(ref_type, ref_id)")
+
     # ── Triggers ───────────────────────────────────────────────────────────
     for table in ("companies", "roles"):
         cur.execute(f"""
@@ -219,7 +247,7 @@ def init():
     con.commit()
     con.close()
     print(f"✓ Database initialized: {DB_PATH}")
-    print("  Tables: companies, roles, contacts, applications, activity, search_runs, analysis_snapshots")
+    print("  Tables: companies, roles, contacts, applications, activity, search_runs, analysis_snapshots, stories, story_refs")
     print("  Views:  pipeline_summary, needs_action, application_log")
 
 if __name__ == "__main__":
