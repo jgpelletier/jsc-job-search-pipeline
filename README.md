@@ -165,6 +165,20 @@ Everything else — `CLAUDE.md`, the skills, the database — works without modi
 
 ---
 
+## Testing
+
+The database layer has a small stdlib test suite — no dependencies, runs in under a second.
+
+```bash
+python3 -m unittest tests.test_db
+```
+
+What it covers: schema completeness (every column the code writes to exists in the schema), `db.verify()` correctness on empty and drifted databases, `add_role` deduplication, and disqualified-role filtering. The schema-completeness test is the highest-leverage one — if you fork this and add a column to a write path, the test will fail until you also update `db/init_db.py`.
+
+The skills, `CLAUDE.md`, and `references/*` are prompts and personal context, not code, and are intentionally not unit-tested.
+
+---
+
 ## File Structure
 
 ```
