@@ -14,28 +14,78 @@ constraints, growth edges — live in `references/`:
 - `references/mnookin.md` — must-haves and must-nots
 - `references/stories/` — verified work stories, used instead of reconstructing facts from resume bullets
 
-Read these at the start of every session so your suggestions are grounded in real, verified
-context — not generic PM advice.
+The first three are small and load-bearing — load them at session start. Stories load on demand
+(see the Loading Strategy in the next section). Generic PM advice from stub or unloaded context
+is worse than no advice.
 
 ## Session Start Protocol
 
-At the start of every session, before any task:
-1. Read `HANDOFF.md` if it exists — current pipeline state, open decisions, what's next
-2. Skim `references/` so you have the candidate's metrics, voice, and constraints loaded
-3. Run `python3 db/db.py pipeline` if asked for pipeline state
+Branch on state before any task. Run these checks in order; the first failed check determines
+the next action.
 
-If `HANDOFF.md` does not exist (first session), the first thing to do is create one after the candidate describes what they want to work on.
+### Step 1 — Is `pipeline.db` initialized?
+
+```bash
+ls pipeline.db 2>&1
+```
+
+If missing → invoke the `setup` skill. Do not proceed. Do not score, draft, or research without
+a database — the first write will fail with a SQLite "no such table" error.
+
+### Step 2 — Are the personal references populated?
+
+A file counts as a "stub" if it still contains placeholder phrases shipped with the template
+(`[Your Name]`, `Replace this stub`, `One or two sentences. What you build`). Check
+`references/resume.md`, `references/cmf.md`, and `references/mnookin.md`.
+
+If any is still a stub → invoke the `setup` skill. Do not draft from stub references.
+
+### Step 3 — Does `HANDOFF.md` exist?
+
+- **Exists** → read it. This is the current pipeline state, open decisions, and the next action.
+- **Missing** (and Steps 1–2 passed) → this is a returning user who closed the last session
+  cleanly. Ask what they want to work on and create `HANDOFF.md` after the first task completes.
+
+### Loading strategy
+
+**Always load at session start** (small, load-bearing):
+- `CLAUDE.md` (this file — automatic)
+- `references/resume.md` — identity and metric source
+- `references/cmf.md` — positioning and voice anchors
+- `references/mnookin.md` — fit constraints used by every scoring decision
+- `HANDOFF.md` — current state
+
+**Load on demand:**
+- `references/stories/*.md` — read the specific story when drafting a bullet, cover letter, or
+  outreach that references that work. Do not skim the whole folder at session start.
+- `references/analyses/*.md` — read the specific artifact when reviewing or updating that role.
+
+The stories folder targets one-per-bullet (often 15–25 files at scale). Loading the whole folder
+every turn is the wrong default.
+
+### Pipeline state — on demand only
+
+Run `python3 db/db.py pipeline` or `db.needs_action()` only when the candidate asks for pipeline
+state. Do not greedy-load on every session.
 
 ## Session End Protocol
 
 At the end of every working session (when the candidate signals done, or after any
-significant stage completes), overwrite `HANDOFF.md` with:
-- Date and tool used
-- Current status of every active role
-- Exact next action per role (stage in workflow)
-- Open decisions waiting on the candidate
-- Summary of what was completed this session
-- Updated references/analyses index if new files were added
+significant stage completes):
+
+1. **Run `db.verify()`** — reconciles the DB against the filesystem. Surfaces analysis
+   files referenced in the DB but missing on disk, files on disk with no DB record, and
+   roles whose `source_file` cannot be located. Fix or note any drift before writing
+   HANDOFF.md so the next session starts from accurate state.
+
+2. **Overwrite `HANDOFF.md`** with:
+   - Date and tool used
+   - Current status of every active role
+   - Exact next action per role (stage in workflow)
+   - Open decisions waiting on the candidate
+   - Summary of what was completed this session
+   - Updated references/analyses index if new files were added
+   - Any verify() findings that were not resolved this session
 
 ## Core Behavior Rules
 
@@ -321,6 +371,9 @@ db.log_response(role_id, contact, summary)  # record inbound response
 db.log_application(role_id, ...)            # record a submission
 db.disqualify(role_id, reason)              # remove from pipeline
 db.log_search_run(...)                      # record a search run
+
+# Integrity
+db.verify()                                  # reconcile DB ↔ filesystem (run before HANDOFF)
 ```
 
 Valid statuses (in order):
