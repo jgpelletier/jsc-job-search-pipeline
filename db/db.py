@@ -312,17 +312,6 @@ def _print_table(rows):
     print(f"\n  {len(rows)} row(s)\n")
 
 
-if __name__ == "__main__":
-    import sys
-    cmd = sys.argv[1] if len(sys.argv) > 1 else "pipeline"
-    if cmd == "pipeline":   backup(); show_pipeline()
-    elif cmd == "action":   needs_action()
-    elif cmd == "stats":    stats()
-    elif cmd == "search":   search_roles(sys.argv[2] if len(sys.argv)>2 else "")
-    elif cmd == "backup":   backup()
-    else: print(f"Unknown command: {cmd}")
-
-
 # ── APPLICATION OPERATIONS ─────────────────────────────────────────────────
 
 def log_application(role_id, method, resume_version, resume_bullets_used,
@@ -597,9 +586,128 @@ def get_target_contacts(company_id=None):
             status.append("pending")
         if r['discovered_at']:
             status.append(f"found {r['discovered_at'][:10]}")
-        
+
         print(f"  [{r['company_name']}] {r['name']} — {r['title'] or 'unknown title'}")
         print(f"              Status: {', '.join(status)}")
         if r['linkedin_url']:
             print(f"              LinkedIn: {r['linkedin_url']}")
     return [dict(r) for r in rows]
+
+
+# ── INTEGRITY OPERATIONS ───────────────────────────────────────────────────
+
+def verify():
+    """Reconciliation check between the DB and the filesystem.
+
+    Surfaces drift the agent cannot otherwise see:
+      - analysis files referenced in analysis_snapshots but missing on disk
+      - analysis files on disk with no DB record (orphans)
+      - roles whose source_file does not exist in inbox/ or inbox/processed/
+
+    Returns a dict of findings for programmatic use. Intended to run at session
+    end before HANDOFF.md is overwritten, or anytime as a sanity check.
+    """
+    issues = {
+        "missing_analysis_files":  [],   # in DB, not on disk
+        "orphaned_analysis_files": [],   # on disk, not in DB
+        "missing_source_files":    [],   # roles.source_file not in inbox/processed/
+        "stories_count":           0,
+    }
+
+    # 1. analysis_snapshots → filesystem
+    with con() as db:
+        rows = db.execute(
+            "SELECT id, role_id, skill_type, file_path FROM analysis_snapshots"
+        ).fetchall()
+
+    db_files = set()
+    for r in rows:
+        db_files.add(r["file_path"])
+        if not os.path.exists(r["file_path"]):
+            issues["missing_analysis_files"].append({
+                "snapshot_id": r["id"],
+                "role_id":     r["role_id"],
+                "skill_type":  r["skill_type"],
+                "file_path":   r["file_path"],
+            })
+
+    # 2. filesystem → analysis_snapshots
+    analyses_dir = "references/analyses"
+    if os.path.isdir(analyses_dir):
+        for f in os.listdir(analyses_dir):
+            if not f.endswith(".md") or f == "README.md":
+                continue
+            full_path = os.path.join(analyses_dir, f)
+            if full_path not in db_files:
+                issues["orphaned_analysis_files"].append(full_path)
+
+    # 3. roles.source_file → inbox/ or inbox/processed/
+    with con() as db:
+        rows = db.execute(
+            "SELECT id, source_file FROM roles "
+            "WHERE source_file IS NOT NULL AND source_file != ''"
+        ).fetchall()
+    for r in rows:
+        candidates = [
+            os.path.join("inbox/processed", r["source_file"]),
+            os.path.join("inbox", r["source_file"]),
+        ]
+        if not any(os.path.exists(p) for p in candidates):
+            issues["missing_source_files"].append({
+                "role_id":     r["id"],
+                "source_file": r["source_file"],
+            })
+
+    # 4. stories count (informational — no DB to compare against)
+    stories_dir = "references/stories"
+    if os.path.isdir(stories_dir):
+        issues["stories_count"] = sum(
+            1 for f in os.listdir(stories_dir)
+            if f.endswith(".md") and f != "README.md"
+        )
+
+    total = (len(issues["missing_analysis_files"])
+             + len(issues["orphaned_analysis_files"])
+             + len(issues["missing_source_files"]))
+
+    print("\n🔍 Pipeline integrity check\n")
+
+    if total == 0:
+        print(f"  ✓ No drift detected.")
+        print(f"    Stories tracked: {issues['stories_count']}\n")
+        return issues
+
+    if issues["missing_analysis_files"]:
+        print(f"  ⚠ {len(issues['missing_analysis_files'])} analysis file(s) referenced in DB but missing on disk:")
+        for m in issues["missing_analysis_files"]:
+            print(f"    role_id={m['role_id']}  {m['skill_type']:<20} → {m['file_path']}")
+        print()
+
+    if issues["orphaned_analysis_files"]:
+        print(f"  ⚠ {len(issues['orphaned_analysis_files'])} analysis file(s) on disk with no DB record:")
+        for f in issues["orphaned_analysis_files"]:
+            print(f"    {f}")
+        print()
+
+    if issues["missing_source_files"]:
+        print(f"  ⚠ {len(issues['missing_source_files'])} role(s) reference a source_file not found in inbox/processed/:")
+        for m in issues["missing_source_files"]:
+            print(f"    role_id={m['role_id']}  source_file={m['source_file']}")
+        print()
+
+    print(f"  Stories tracked: {issues['stories_count']}\n")
+    return issues
+
+
+# ── CLI ─────────────────────────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    import sys
+    cmd = sys.argv[1] if len(sys.argv) > 1 else "pipeline"
+    if cmd == "pipeline":   backup(); show_pipeline()
+    elif cmd == "action":   needs_action()
+    elif cmd == "stats":    stats()
+    elif cmd == "search":   search_roles(sys.argv[2] if len(sys.argv)>2 else "")
+    elif cmd == "backup":   backup()
+    elif cmd == "verify":   verify()
+    else: print(f"Unknown command: {cmd}")

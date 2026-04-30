@@ -35,10 +35,12 @@ def init():
         title           TEXT NOT NULL,
         url             TEXT,
         source          TEXT,
+        source_file     TEXT,                       -- original screenshot filename or other source identifier
         status          TEXT DEFAULT 'Researching',
         tech_fit        REAL,
         culture_fit     REAL,
         overall_fit     REAL,
+        previous_fit    REAL,                       -- prior overall_fit, set on score revision (audit trail)
         comp_min        INTEGER,
         comp_max        INTEGER,
         remote          TEXT,
