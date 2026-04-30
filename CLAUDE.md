@@ -297,6 +297,8 @@ Never list accomplishments. One story, told well.
 
 `references/stories/` contains verified, structured stories for each major work achievement. Use these as the source of truth when drafting resume bullets, outreach, or cover letters.
 
+The `stories` table indexes them by slug. `db.register_story()` keeps the table in sync (the `setup` skill calls it; reconcile with `db.verify()` if files appear or disappear outside that path). When a draft uses a story, call `db.link_story(slug, ref_type, ref_id)` so interview prep can later answer "what stories backed this application?"
+
 Do NOT rely on memory or prior session output. Reconstruction from resume bullets distorts metrics; reconstruction from prior chat sessions compounds errors. The story file is the canonical source.
 
 Before drafting any material that references a specific work story, read the relevant verified story file. If a metric is in your head but not in the story file, treat it as unverified and ask the candidate to confirm.
@@ -420,6 +422,11 @@ db.log_response(role_id, contact, summary)  # record inbound response
 db.log_application(role_id, ...)            # record a submission
 db.disqualify(role_id, reason)              # remove from pipeline
 db.log_search_run(...)                      # record a search run
+
+# Stories
+db.register_story(slug, file_path, title)    # track a story file (idempotent on slug)
+db.link_story(slug, ref_type, ref_id)        # record story → application/analysis/outreach
+db.get_stories_for(ref_type, ref_id)         # what stories backed this artifact
 
 # Integrity
 db.verify()                                  # reconcile DB ↔ filesystem (run before HANDOFF)

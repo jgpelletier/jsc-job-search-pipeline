@@ -95,6 +95,17 @@ For each of the three, run the interview in this order — one question at a tim
 
 Write each story to `references/stories/NN-short-slug.md` using the structure in `references/stories/README.md`. Number them `01`, `02`, `03` in the order the candidate told them.
 
+**Register each story in the DB after writing it** — keeps the stories table in sync with the filesystem so `verify()` can reconcile them later:
+
+```python
+import db.db as db
+db.register_story(
+    slug="01-short-slug",
+    file_path="references/stories/01-short-slug.md",
+    title="Short human-readable title",
+)
+```
+
 **The "Not verified" section must exist in every story file, even if empty.** It is the drift prevention.
 
 ## Step 4: Mnookin — Hard Constraints

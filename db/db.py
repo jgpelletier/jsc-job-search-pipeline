@@ -625,6 +625,74 @@ def get_target_contacts(company_id=None):
     return [dict(r) for r in rows]
 
 
+# ── STORY OPERATIONS ───────────────────────────────────────────────────────
+
+def register_story(slug, file_path, title=None):
+    """Register a story file in the stories table. Idempotent on slug —
+    repeat calls with the same slug update file_path/title rather than
+    inserting duplicates."""
+    with con() as db:
+        existing = db.execute(
+            "SELECT id FROM stories WHERE slug=?", (slug,)
+        ).fetchone()
+        if existing:
+            db.execute(
+                "UPDATE stories SET file_path=?, title=? WHERE id=?",
+                (file_path, title, existing["id"])
+            )
+            return existing["id"]
+        cur = db.execute(
+            "INSERT INTO stories (slug, file_path, title) VALUES (?,?,?)",
+            (slug, file_path, title)
+        )
+    print(f"✓ Story registered: {slug}")
+    return cur.lastrowid
+
+
+def link_story(slug, ref_type, ref_id):
+    """Record that a story backed a specific artifact.
+
+    ref_type is 'application' | 'analysis' | 'outreach'. The story must
+    already be registered. Idempotent on (story, ref_type, ref_id).
+    """
+    if ref_type not in ("application", "analysis", "outreach"):
+        print(f"⚠ Invalid ref_type: {ref_type}. Use application/analysis/outreach.")
+        return
+    with con() as db:
+        story = db.execute(
+            "SELECT id FROM stories WHERE slug=?", (slug,)
+        ).fetchone()
+        if not story:
+            print(f"⚠ Story '{slug}' not registered. Call register_story() first.")
+            return
+        existing = db.execute(
+            "SELECT id FROM story_refs WHERE story_id=? AND ref_type=? AND ref_id=?",
+            (story["id"], ref_type, ref_id)
+        ).fetchone()
+        if existing:
+            return existing["id"]
+        cur = db.execute(
+            "INSERT INTO story_refs (story_id, ref_type, ref_id) VALUES (?,?,?)",
+            (story["id"], ref_type, ref_id)
+        )
+    return cur.lastrowid
+
+
+def get_stories_for(ref_type, ref_id):
+    """Return the stories that backed a specific application/analysis/outreach.
+
+    Use this before interview prep — answers 'what did I tell them this story was?'
+    """
+    with con() as db:
+        rows = db.execute("""
+            SELECT s.* FROM stories s
+            JOIN story_refs sr ON sr.story_id = s.id
+            WHERE sr.ref_type = ? AND sr.ref_id = ?
+            ORDER BY sr.created_at
+        """, (ref_type, ref_id)).fetchall()
+    return [dict(r) for r in rows]
+
+
 # ── INTEGRITY OPERATIONS ───────────────────────────────────────────────────
 
 def verify():
@@ -634,6 +702,8 @@ def verify():
       - analysis files referenced in analysis_snapshots but missing on disk
       - analysis files on disk with no DB record (orphans)
       - roles whose source_file does not exist in inbox/ or inbox/processed/
+      - story files referenced in the stories table but missing on disk
+      - story files on disk with no DB record (orphans)
 
     Returns a dict of findings for programmatic use. Intended to run at session
     end before HANDOFF.md is overwritten, or anytime as a sanity check.
@@ -642,6 +712,8 @@ def verify():
         "missing_analysis_files":  [],   # in DB, not on disk
         "orphaned_analysis_files": [],   # on disk, not in DB
         "missing_source_files":    [],   # roles.source_file not in inbox/processed/
+        "missing_story_files":     [],   # in stories table, not on disk
+        "orphaned_story_files":    [],   # on disk, not in stories table
         "stories_count":           0,
     }
 
@@ -689,9 +761,28 @@ def verify():
                 "source_file": r["source_file"],
             })
 
-    # 4. stories count (informational — no DB to compare against)
+    # 4. stories table → filesystem, and filesystem → stories table
     stories_dir = "references/stories"
+    with con() as db:
+        story_rows = db.execute("SELECT id, slug, file_path FROM stories").fetchall()
+
+    db_story_files = set()
+    for r in story_rows:
+        db_story_files.add(r["file_path"])
+        if not os.path.exists(r["file_path"]):
+            issues["missing_story_files"].append({
+                "story_id": r["id"],
+                "slug":     r["slug"],
+                "file_path": r["file_path"],
+            })
+
     if os.path.isdir(stories_dir):
+        for f in os.listdir(stories_dir):
+            if not f.endswith(".md") or f == "README.md":
+                continue
+            full_path = os.path.join(stories_dir, f)
+            if full_path not in db_story_files:
+                issues["orphaned_story_files"].append(full_path)
         issues["stories_count"] = sum(
             1 for f in os.listdir(stories_dir)
             if f.endswith(".md") and f != "README.md"
@@ -699,7 +790,9 @@ def verify():
 
     total = (len(issues["missing_analysis_files"])
              + len(issues["orphaned_analysis_files"])
-             + len(issues["missing_source_files"]))
+             + len(issues["missing_source_files"])
+             + len(issues["missing_story_files"])
+             + len(issues["orphaned_story_files"]))
 
     print("\n🔍 Pipeline integrity check\n")
 
@@ -724,6 +817,19 @@ def verify():
         print(f"  ⚠ {len(issues['missing_source_files'])} role(s) reference a source_file not found in inbox/processed/:")
         for m in issues["missing_source_files"]:
             print(f"    role_id={m['role_id']}  source_file={m['source_file']}")
+        print()
+
+    if issues["missing_story_files"]:
+        print(f"  ⚠ {len(issues['missing_story_files'])} story file(s) referenced in DB but missing on disk:")
+        for m in issues["missing_story_files"]:
+            print(f"    story_id={m['story_id']}  slug={m['slug']:<30} → {m['file_path']}")
+        print()
+
+    if issues["orphaned_story_files"]:
+        print(f"  ⚠ {len(issues['orphaned_story_files'])} story file(s) on disk with no DB record:")
+        print(f"    (call db.register_story(slug, file_path) to track each)")
+        for f in issues["orphaned_story_files"]:
+            print(f"    {f}")
         print()
 
     print(f"  Stories tracked: {issues['stories_count']}\n")

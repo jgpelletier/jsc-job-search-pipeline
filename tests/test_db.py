@@ -167,6 +167,55 @@ class DisqualifyTests(_FreshDB):
         self.assertNotIn(dropper, ids)
 
 
+class StoriesTests(_FreshDB):
+
+    def test_register_story_is_idempotent_on_slug(self):
+        first = dbm.register_story(
+            slug="01-platform-migration",
+            file_path="references/stories/01-platform-migration.md",
+            title="Platform migration",
+        )
+        second = dbm.register_story(
+            slug="01-platform-migration",
+            file_path="references/stories/01-platform-migration.md",
+            title="Platform migration (renamed)",
+        )
+        self.assertEqual(first, second,
+            "Repeat register_story calls with the same slug must return the same id")
+
+    def test_link_story_records_artifact_relation(self):
+        dbm.register_story(
+            slug="01-foo",
+            file_path="references/stories/01-foo.md",
+        )
+        dbm.link_story("01-foo", ref_type="application", ref_id=42)
+        results = dbm.get_stories_for("application", 42)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["slug"], "01-foo")
+
+    def test_link_story_rejects_invalid_ref_type(self):
+        dbm.register_story(slug="01-foo", file_path="references/stories/01-foo.md")
+        # Invalid ref_type — should print a warning and not insert
+        result = dbm.link_story("01-foo", ref_type="bogus", ref_id=1)
+        self.assertIsNone(result)
+
+    def test_verify_detects_missing_story_files(self):
+        dbm.register_story(
+            slug="01-not-on-disk",
+            file_path="references/stories/01-not-on-disk.md",
+        )
+        report = dbm.verify()
+        self.assertEqual(len(report["missing_story_files"]), 1)
+        self.assertEqual(report["missing_story_files"][0]["slug"], "01-not-on-disk")
+
+    def test_verify_detects_orphaned_story_files(self):
+        orphan = "references/stories/99-orphan.md"
+        with open(orphan, "w") as f:
+            f.write("# Orphan story with no DB record\n")
+        report = dbm.verify()
+        self.assertIn(orphan, report["orphaned_story_files"])
+
+
 class CanonicalConstantsTests(unittest.TestCase):
     """Lock in the canonical constants and verify the docs match the code.
 
