@@ -10,9 +10,9 @@ Built for senior PMs and knowledge workers who want to run a high-volume, measur
 
 Most AI job search tools are chatbots with memory. This is different.
 
-The design follows a finding popularized by Vercel's engineering team: **passive context that is always loaded outperforms on-demand skill retrieval**, because it eliminates the agent's decision point. All judgment logic — fit scoring, voice rules, approval gates — lives in one always-present file. Skills become thin output templates. A SQLite database becomes the CRM backbone.
+**Passive context that is always loaded outperforms on-demand skill retrieval** — it eliminates the agent's decision point. All judgment logic — fit scoring, voice rules, approval gates — lives in one always-present file. Skills become thin output templates. A SQLite database becomes the CRM backbone.
 
-Three layers:
+Four layers:
 
 | Layer | File | What it does |
 |-------|------|-------------|
@@ -20,6 +20,10 @@ Three layers:
 | **Personal facts** | `references/*` | Your resume, CMF, must-haves/must-nots, verified work stories |
 | **Skills** | `skills/*/SKILL.md` | Output templates for each pipeline stage |
 | **Database** | `pipeline.db` | Companies, roles, contacts, applications, activity log |
+
+**Why SQLite over flat-file markdown:** A markdown CRM is readable by the agent, but it can't answer "what roles have gone five days without contact?" without scanning everything. SQLite gives you the `needs_action` view, deduplication on intake, and transactional writes that don't corrupt state mid-session. The tradeoff is opacity — `db.py` exists so you never need a SQL client.
+
+**HANDOFF.md** is the session continuity mechanism. At the end of every working session the agent overwrites it with current pipeline state, open decisions, and exact next action per role. The next session reads it before doing anything else. This is how context survives across sessions without the agent reconstructing state from scratch — or hallucinating it.
 
 ---
 
